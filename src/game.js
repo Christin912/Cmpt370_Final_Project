@@ -23,6 +23,17 @@ class Game {
     this.collidableObjects.push(object);
   }
 
+  createBoxCollider(object, dimensions, onCollide = null) {
+    object.collider = {
+      type: "BOX",
+      dimensions: dimensions,
+      onCollide: onCollide ? onCollide : (otherObject) => {
+        console.log(`Collided with ${otherObject.name}`);
+      }
+    };
+    this.collidableObjects.push(object);
+  }
+
   // example - function to check if an object is colliding with collidable objects
   checkCollision(object) {
     // loop over all the other collidable objects 
@@ -30,6 +41,41 @@ class Game {
       // probably don't need to collide with ourselves
       if (object.name === otherObject.name) {
         return;
+      }
+      if (!object.collider || !otherObject.collider) {
+        return; // if either object doesn't have a collider, skip
+      }
+      if (object.collider.type !== "BOX" || otherObject.collider.type !== "BOX") {
+        return;
+      }
+
+      const a = object.model.position;
+      const b = otherObject.model.position;
+      const aDim = object.collider.dimensions;
+      const bDim = otherObject.collider.dimensions;
+
+      if (
+        Math.abs(a[0] - b[0]) <= (aDim[0] / 2 + bDim[0] / 2) &&
+        Math.abs(a[1] - b[1]) <= (aDim[1] / 2 + bDim[1] / 2) &&
+        Math.abs(a[2] - b[2]) <= (aDim[2] / 2 + bDim[2] / 2)
+      ) {
+        if (object.collider.onCollide) {
+          object.collider.onCollide(otherObject);
+        }
+        const overlapX = (aDim[0] / 2 + bDim[0] / 2) - Math.abs(a[0] - b[0]);
+        const overlapY = (aDim[1] / 2 + bDim[1] / 2) - Math.abs(a[1] - b[1]);
+        const overlapZ = (aDim[2] / 2 + bDim[2] / 2) - Math.abs(a[2] - b[2]);
+
+        if (overlapX < overlapY && overlapX < overlapZ) {
+          object.model.position[0] += (a[0] < b[0] ? -overlapX : overlapX);
+        } else if (overlapY < overlapX && overlapY < overlapZ) {
+          object.model.position[1] += (a[1] < b[1] ? -overlapY : overlapY);
+          object.velocity[1] = 0; // reset vertical velocity on Y collision
+          object.isOnGround = true; // set on ground flag
+          console.log("Landed");
+        } else {
+          object.model.position[2] += (a[2] < b[2] ? -overlapZ : overlapZ);
+        }
       }
       // do a check to see if we have collided, if we have we can call object.onCollide(otherObject) which will
       // call the onCollide we define for that specific object. This way we can handle collisions identically for all
@@ -54,13 +100,14 @@ class Game {
     this.Player.velocity = vec3.fromValues(0, 0, 0); // custom property
     const Platform = getObject(this.state, "Platform"); // we wont save this as instance var since we dont plan on using it in update
     this.Satellite = getObject(this.state, "Satellite");
+    this.Camera = getObject(this.state, "Camera");
 
     // example - create sphere colliders on our two objects as an example, we give 2 objects colliders otherwise
     // no collision can happen
-    this.createSphereCollider(this.Player, 0.5, (otherObject) => {
+    this.createBoxCollider(this.Player, [0.5, 0.5, 0.5], (otherObject) => {
       console.log(`This is a custom collision of ${otherObject.name}`)
     });
-    this.createSphereCollider(Platform, 0.5);
+    this.createBoxCollider(Platform, [315, 0.5, 0.5]);
 
     // example - setting up a key press event to move an object in the scene
     document.addEventListener("keypress", (e) => {
@@ -68,7 +115,10 @@ class Game {
 
       switch (e.key) {
         case "space":
-          this.Player.translate(vec3.fromValues(0, 0.5, 0));
+          if (this.Player.isOnGround){
+            this.Player.velocity[1] = 5; // give the player an upwards velocity
+            this.Player.isOnGround = false;
+          }
           break;
 
         default:
@@ -117,16 +167,17 @@ class Game {
   // Runs once every frame non stop after the scene loads
   onUpdate(deltaTime) {
     // TODO - Here we can add game logic, like moving game objects, detecting collisions, you name it. Examples of functions can be found in sceneFunctions.
-    this.Satellite.rotate('z', deltaTime * 0.2); // rotate the satellite slowly
+    const speed = 2;
     const gravity = -9.81;
-    const seconds = deltaTime / 1000;
-
-    this.Player.velocity[1] += gravity * seconds; // apply gravity to vertical velocity
-    //this.Player.translate(vec3.fromValues(0, this.Player.velocity[1] * seconds, 0)); // update position based on velocity
-    this.Player.position[1] += this.Player.velocity[1] * seconds;
-    console.log("Player Y:", this.Player.position[1]);
+    const jumpStrength = 5;
     
-    //this.checkCollision(this.Player); // check for collisions on the player every frame
+    this.Player.translate(vec3.fromValues(speed * deltaTime, 0, 0)); // move player along x-axis
+    this.Player.velocity[1] += gravity * deltaTime; // apply gravity to vertical velocity
+    this.Player.translate(vec3.fromValues(0, this.Player.velocity[1] * deltaTime, 0)); // update position based on velocity
+
+    this.Satellite.rotate('z', deltaTime * 0.2); // rotate the satellite slowly
+    
+    this.checkCollision(this.Player); // check for collisions on the player every frame
 
     // example: Rotate a single object we defined in our start method
     // this.cube.rotate('x', deltaTime * 0.5);
