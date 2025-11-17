@@ -9,6 +9,7 @@ class Game {
   customMethod() {
     console.log("Custom method!");
   }
+  
 
   // example - create a collider on our object with various fields we might need (you will likely need to add/remove/edit how this works)
   createSphereCollider(object, radius, onCollide = null) {
@@ -50,6 +51,7 @@ class Game {
 
     // example - set an object in onStart before starting our render loop!
     this.Player = getObject(this.state, "Player");
+    this.Player.velocity = vec3.fromValues(0, 0, 0); // custom property
     const Platform = getObject(this.state, "Platform"); // we wont save this as instance var since we dont plan on using it in update
     this.Satellite = getObject(this.state, "Satellite");
 
@@ -65,12 +67,8 @@ class Game {
       e.preventDefault();
 
       switch (e.key) {
-        case "a":
-          this.Player.translate(vec3.fromValues(0.5, 0, 0));
-          break;
-
-        case "d":
-          this.Player.translate(vec3.fromValues(-0.5, 0, 0));
+        case "space":
+          this.Player.translate(vec3.fromValues(0, 0.5, 0));
           break;
 
         default:
@@ -118,12 +116,20 @@ class Game {
 
   // Runs once every frame non stop after the scene loads
   onUpdate(deltaTime) {
-    // TODO - Here we can add game logic, like moving game objects, detecting collisions, you name it. Examples of functions can be found in sceneFunctions
+    // TODO - Here we can add game logic, like moving game objects, detecting collisions, you name it. Examples of functions can be found in sceneFunctions.
+    this.Satellite.rotate('z', deltaTime * 0.2); // rotate the satellite slowly
+    const gravity = -9.81;
+    const seconds = deltaTime / 1000;
+
+    this.Player.velocity[1] += gravity * seconds; // apply gravity to vertical velocity
+    //this.Player.translate(vec3.fromValues(0, this.Player.velocity[1] * seconds, 0)); // update position based on velocity
+    this.Player.position[1] += this.Player.velocity[1] * seconds;
+    console.log("Player Y:", this.Player.position[1]);
     
+    //this.checkCollision(this.Player); // check for collisions on the player every frame
 
     // example: Rotate a single object we defined in our start method
     // this.cube.rotate('x', deltaTime * 0.5);
-    this.Satellite.rotate('z', deltaTime * 0.2);
 
     // example: Rotate all objects in the scene marked with a flag
     // this.state.objects.forEach((object) => {
