@@ -105,9 +105,13 @@ async function main() {
 
   // If skybox is enabled, load the texture and initialize skybox
   if (state.skyBoxOn && state.skyBoxPath) {
-    const skyBoxFile = state.skyBoxPath.split('/').pop(); // get filename from path
-    state.skyBoxTexture = await loadTextureAsync(gl, skyBoxFile); // Await full load so first frame uses final texture
-    initSkyBox(gl, state); // initialize skybox
+    try {
+      const skyBoxFile = state.skyBoxPath.split('/').pop(); // get filename from path
+      state.skyBoxTexture = await loadTextureAsync(gl, skyBoxFile); // Await full load so first frame uses final texture
+      initSkyBox(gl, state); // initialize skybox
+    } catch(e) {
+      console.warn("Skybox failed to load, continuing without it:", e.message);
+    }
   };
 
   state.numLights = state.pointLights.length;
@@ -166,8 +170,9 @@ function startRendering(gl, state) {
     then = now;
 
     state.deltaTime = deltaTime;
-    drawScene(gl, deltaTime, state);
+    //drawScene(gl, deltaTime, state);
     game.onUpdate(deltaTime); //constantly call our game loop
+    drawScene(gl, deltaTime, state);
 
     // Request another frame when this one is done
     requestAnimationFrame(render);

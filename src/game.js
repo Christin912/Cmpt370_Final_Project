@@ -100,14 +100,26 @@ class Game {
     this.Player.velocity = vec3.fromValues(0, 0, 0); // custom property
     const Platform = getObject(this.state, "Platform"); // we wont save this as instance var since we dont plan on using it in update
     this.Satellite = getObject(this.state, "Satellite");
-    this.Camera = getObject(this.state, "Camera");
+    //this.Camera = getObject(this.state, "Camera");
+
+    this.CameraOffset = vec3.create();
+    vec3.sub(this.CameraOffset, this.state.camera.position, this.Player.model.position);
+
+    this.cameraFollow = {
+      enabled: true,
+      smooth: true,
+      smoothFactor: 0.15,
+      lockY: true,
+      lookAtPlayer: true
+    };
 
     // example - create sphere colliders on our two objects as an example, we give 2 objects colliders otherwise
     // no collision can happen
     this.createBoxCollider(this.Player, [0.5, 0.5, 0.5], (otherObject) => {
       console.log(`This is a custom collision of ${otherObject.name}`)
     });
-    this.createBoxCollider(Platform, [315, 0.5, 0.5]);
+    if (Platform)
+      this.createBoxCollider(Platform, [315, 0.5, 0.5]);
 
     // example - setting up a key press event to move an object in the scene
     document.addEventListener("keypress", (e) => {
@@ -178,6 +190,31 @@ class Game {
     this.Satellite.rotate('z', deltaTime * 0.2); // rotate the satellite slowly
     
     this.checkCollision(this.Player); // check for collisions on the player every frame
+
+    if (this.cameraFollow && this.Player) {
+      const desiredPosition = vec3.create();
+      vec3.add(desiredPosition, this.Player.model.position, this.CameraOffset);
+
+      if (this.cameraFollow.smooth) {
+        const delta = vec3.create();
+        vec3.sub(delta, desiredPosition, this.state.camera.position);
+        vec3.scale(delta, delta, this.cameraFollow.smoothFactor);
+        vec3.add(this.state.camera.position, this.state.camera.position, delta);
+      } else {
+        vec3.copy(this.state.camera.position, desiredPosition);
+      }
+
+      if (this.cameraFollow.lockY) {
+        this.state.camera.position[1] = desiredPosition[1];
+      }
+
+      if (this.cameraFollow.lookAtPlayer) {
+        const toPlayer = vec3.create();
+        vec3.sub(toPlayer, this.Player.model.position, this.state.camera.position);
+        vec3.normalize(toPlayer, toPlayer);
+        vec3.copy(this.state.camera.front, toPlayer);
+      }
+    }
 
     // example: Rotate a single object we defined in our start method
     // this.cube.rotate('x', deltaTime * 0.5);
