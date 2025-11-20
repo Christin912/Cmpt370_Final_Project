@@ -103,6 +103,13 @@ async function main() {
     samplerNormExists: 0,
   };
 
+  // If skybox is enabled, load the texture and initialize skybox
+  if (state.skyBoxOn && state.skyBoxPath) {
+    const skyBoxFile = state.skyBoxPath.split('/').pop(); // get filename from path
+    state.skyBoxTexture = await loadTextureAsync(gl, skyBoxFile); // Await full load so first frame uses final texture
+    initSkyBox(gl, state); // initialize skybox
+  };
+
   state.numLights = state.pointLights.length;
 
   const now = new Date();
@@ -178,13 +185,27 @@ function startRendering(gl, state) {
  */
 function drawScene(gl, deltaTime, state) {
   gl.clearColor(state.settings.backgroundColor[0], state.settings.backgroundColor[1], state.settings.backgroundColor[2], 1.0); // Here we are drawing the background color that is saved in our state
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  if (state.skyBoxOn && state.skyBoxTexture) {
+    gl.depthMask(false);
+    gl.useProgram(state.skybox.program);
+    gl.bindVertexArray(state.skybox.vao);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, state.skyBoxTexture);
+    gl.uniform1i(state.skybox.uniformSkybox, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, state.skybox.numVertices);
+    gl.bindVertexArray(null);
+    gl.depthMask(true);
+  }
+  
   gl.enable(gl.DEPTH_TEST); // Enable depth testing
   gl.depthFunc(gl.LEQUAL); // Near things obscure far things
   gl.disable(gl.CULL_FACE); // Cull the backface of our objects to be more efficient
   gl.cullFace(gl.BACK);
   // gl.frontFace(gl.CCW);
   gl.clearDepth(1.0); // Clear everything
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+  
 
   // sort objects by nearness to camera
   let sorted = state.objects.sort((a, b) => {
@@ -313,4 +334,63 @@ function drawScene(gl, deltaTime, state) {
       }
     }
   });
+}
+
+// Function to initialize the skybox
+function initSkyBox(gl, state) {
+  // Initialize skybox shaders, buffers, and textures here
+  const skyVert = `#version 300 es
+    in vec2 aPosition;
+    out vec2 vUV;
+
+    void main() {
+        vUV = (aPosition + vec2(1.0)) * 0.5;
+        gl_Position = vec4(aPosition, 0.0, 1.0);
+    }
+    `;
+
+  const skyFrag = `#version 300 es
+    precision mediump float;
+    in vec2 vUV;
+    out vec4 fragColor;
+    uniform sampler2D uSkybox;
+    void main() {
+      fragColor = texture(uSkybox, vUV);
+    }
+    `;
+  
+  // Compile and link skybox shader program
+  const skyboxProgram = initShaderProgram(gl, skyVert, skyFrag);
+  const attribPos = gl.getAttribLocation(skyboxProgram, 'aPosition');
+  const uniformSkybox = gl.getUniformLocation(skyboxProgram, 'uSkybox');
+
+  // Create a quad for the skybox
+  const skyBoxQuad = new Float32Array([
+    -1.0, -1.0,
+     1.0, -1.0,
+    -1.0,  1.0,
+    -1.0,  1.0,
+     1.0, -1.0,
+     1.0,  1.0,
+  ]);
+
+  // Create and bind VAO and VBO for skybox
+  const skyboxVao = gl.createVertexArray();
+  gl.bindVertexArray(skyboxVao);
+
+  const skyboxVbo = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, skyboxVbo);
+  gl.bufferData(gl.ARRAY_BUFFER, skyBoxQuad, gl.STATIC_DRAW);
+  gl.enableVertexAttribArray(attribPos);
+  gl.vertexAttribPointer(attribPos, 2, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
+
+  // Store skybox information in state
+  state.skybox = {
+    program: skyboxProgram,
+    attribPos: attribPos,
+    uniformSkybox: uniformSkybox,
+    vao: skyboxVao,
+    numVertices: 6,
+  };
 }

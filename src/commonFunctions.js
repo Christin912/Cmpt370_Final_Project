@@ -226,7 +226,7 @@ function initTextureCoords(gl, programInfo, textureCoords) {
     }
 
     // TODO: Create and populate a buffer for the UV coordinates
-
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
     return textureCoordBuffer;
   }
 }
@@ -274,6 +274,7 @@ function initBitangentBuffer(gl, programInfo, bitangents) {
     }
 
     // TODO: Create and populate a buffer for the UV coordinates
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
 
     return bitangentBuffer;
   }
@@ -311,6 +312,32 @@ function loadJSONFile(cb, filePath) {
     .catch((err) => {
       console.error(err);
     })
+}
+
+// AI Acknowledgment: The Following Function was created with the assistance of ChatGPT 5.
+// Function to load skybox texture asynchronously
+async function loadTextureAsync(gl, imgPath) {
+  if (!imgPath) return null;
+  const fullpath = "/assets/" + imgPath.replace(/^\.?\/?assets\/?/, '');
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => {
+      const texture = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      resolve(texture);
+    };
+    image.onerror = () => {
+      console.error("Failed to load skybox texture:", fullpath);
+      reject(new Error("Skybox image load failed"));
+    };
+    image.src = fullpath;
+  });
 }
 
 function getTextures(gl, imgPath) {
@@ -388,6 +415,8 @@ function parseSceneFile(file, state) {
         state.pointLights = jData.pointLights;
         state.settings = jData.sceneSettings;
         state.camera = jData.camera;
+        state.skyBoxOn = jData.skyBoxOn;
+        state.skyBoxPath = jData.skyBoxPath;
         state.numberOfObjectsToLoad = jData.objects.length;
         resolve();
       })
