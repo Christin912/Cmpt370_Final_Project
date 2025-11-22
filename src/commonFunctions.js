@@ -464,3 +464,24 @@ async function addMesh(object, vertShader = null, fragShader = null) {
     return created;
   }
 }
+
+function computeAABB(object) {
+  const half = [
+    object.model.scale[0] /4,
+    object.model.scale[1] /4,
+    object.model.scale[2] /4
+  ];
+  const center = [
+    object.model.position[0] + object.centroid[0] - 0.25 * object.model.scale[0],
+    object.model.position[1] + object.centroid[1] - 0.25 * object.model.scale[1],
+    object.model.position[2] + object.centroid[2] - 0.25 * object.model.scale[2]
+  ];
+
+  return {center, half};
+}
+
+function aabbOverlap(a, b) {
+  return (Math.abs(a.center[0] - b.center[0]) <= (a.half[0] + b.half[0])) &&
+         (Math.abs(a.center[1] - b.center[1]) <= (a.half[1] + b.half[1])) &&
+         (Math.abs(a.center[2] - b.center[2]) <= (a.half[2] + b.half[2]));
+}
