@@ -16,13 +16,36 @@ class Game {
       lastJumpPressTime: -999,
       jumpStartTime: 0,
       usedDoubleJump: false,
-      isJumping: false
+      isJumping: false,
+      rotationCount: 0,
+      spinAxis: 'z',
+      spinRemaining: 0,
+      spinSpeed: Math.PI * 2 // radians per second
     };
   }
 
   // example - we can add our own custom method to our game and call it using 'this.customMethod()'
   customMethod() {
     console.log("Custom method!");
+  }
+
+  triggerJumpRotation() {
+    const horizontalDir = this.Player.velocity && this.Player.velocity[0] || 1; // default forward if constant speed
+    const movingHorizontally = Math.abs(horizontalDir) > 0;
+
+    this.jumpState.spinAxis = 'y' //movingHorizontally ? 'z' : 'x';
+    const sign = movingHorizontally ? (horizontalDir >= 0 ? -1 : 1) : 1;
+
+    this.jumpState.spinRemaining = Math.PI; // full rotation
+    this.jumpState.spinSpeed = Math.PI / 0.25; // radians per second
+    this.jumpState.spinSign = sign;
+
+    console.log('[Jump] spin init:', {
+    axis: this.jumpState.spinAxis,
+    sign: this.jumpState.spinSign,
+    remaining: this.jumpState.spinRemaining,
+    speed: this.jumpState.spinSpeed
+    });
   }
   
 
@@ -82,6 +105,8 @@ class Game {
             object.model.position[1] = platformTop + playerHalf; // snap
             object.velocity[1] = 0; // reset vertical velocity on Y collision
             object.isOnGround = true; // set on ground flag
+            this.jumpState.rotationCount = 0;
+            this.jumpState.spinRemaining = 0;
             this.jumpState.lastGroundTime = performance.now() / 1000;
             this.jumpState.usedDoubleJump = false;
             this.jumpState.isJumping = false;
@@ -91,6 +116,8 @@ class Game {
             if (dir === 1 && object.velocity) {
               object.velocity[1] = 0;
               object.isOnGround = true;
+              this.jumpState.rotationCount = 0;
+              this.jumpState.spinRemaining = 0;
               this.jumpState.lastGroundTime = performance.now() / 1000;
               this.jumpState.usedDoubleJump = false;
               this.jumpState.isJumping = false;
@@ -108,31 +135,6 @@ class Game {
         }
       }
       
-
-      /*
-      if (
-        Math.abs(a[0] - b[0]) <= (aDim[0] / 2 + bDim[0] / 2) &&
-        Math.abs(a[1] - b[1]) <= (aDim[1] / 2 + bDim[1] / 2) &&
-        Math.abs(a[2] - b[2]) <= (aDim[2] / 2 + bDim[2] / 2)
-      ) {
-        if (object.collider.onCollide) {
-          object.collider.onCollide(otherObject);
-        }
-        const overlapX = (aDim[0] / 2 + bDim[0] / 2) - Math.abs(a[0] - b[0]);
-        const overlapY = (aDim[1] / 2 + bDim[1] / 2) - Math.abs(a[1] - b[1]);
-        const overlapZ = (aDim[2] / 2 + bDim[2] / 2) - Math.abs(a[2] - b[2]);
-
-        if (overlapX < overlapY && overlapX < overlapZ) {
-          object.model.position[0] += (a[0] < b[0] ? -overlapX : overlapX);
-        } else if (overlapY < overlapX && overlapY < overlapZ) {
-          object.model.position[1] += (a[1] < b[1] ? -overlapY : overlapY);
-          object.velocity[1] = 0; // reset vertical velocity on Y collision
-          object.isOnGround = true; // set on ground flag
-          console.log("Landed");
-        } else {
-          object.model.position[2] += (a[2] < b[2] ? -overlapZ : overlapZ);
-        }
-      }*/
       // do a check to see if we have collided, if we have we can call object.onCollide(otherObject) which will
       // call the onCollide we define for that specific object. This way we can handle collisions identically for all
       // objects that can collide but they can do different things (ie. player colliding vs projectile colliding)
@@ -154,6 +156,15 @@ class Game {
     // example - set an object in onStart before starting our render loop!
     this.Player = getObject(this.state, "Player");
     this.Player.velocity = vec3.fromValues(0, 0, 0); // custom property
+
+    this.state.canvas.tabIndex = 0; // make canvas focusable
+    this.state.canvas.focus();      // focus on the canvas to receive keyboard input
+    window.focus();
+
+    window.addEventListener("keypress", e => {
+      if (e.key === ' ') console.log('[Input] keypress space');
+    });
+
     const Platform = getObject(this.state, "Platform"); // we wont save this as instance var since we dont plan on using it in update
     const gap = 10; // vertical space
     if (Platform && this.Player) {
@@ -183,7 +194,27 @@ class Game {
     if (Platform)
       this.createBoxCollider(Platform);
 
+    window.addEventListener("keydown", (e) => {
+      const isSpace = e.code === "Space" || e.key === " " || e.key === "Spacebar";
+      if (isSpace) {
+        const now = performance.now() / 1000;
+        this.jumpState.lastJumpPressTime = now;
+        this.jumpState.keyHeld = true;
+        console.log("[Input] Space down at", now.toFixed(3));
+      }
+    });
 
+    window.addEventListener("keyup", (e) => {
+      const isSpace = e.code === "Space" || e.key === " " || e.key === "Spacebar";
+      if (isSpace) {
+        this.jumpState.isJumping = false; // stop hold boost
+        this.jumpState.keyHeld = false;
+        console.log("[Input] Space up");
+      }
+    });
+
+
+    /*
     document.addEventListener("keydown", (e) => {
       e.preventDefault();
       if (e.code === "Space") {
@@ -197,7 +228,7 @@ class Game {
         this.jumpState.isJumping = false; // stop hold boost
       }
     });
-
+  */
     this.customMethod(); // calling our custom method! (we could put spawning logic, collision logic etc in there ;) )
 
     // example: spawn some stuff before the scene starts
@@ -239,7 +270,7 @@ class Game {
   // Runs once every frame non stop after the scene loads
   onUpdate(deltaTime) {
     // TODO - Here we can add game logic, like moving game objects, detecting collisions, you name it. Examples of functions can be found in sceneFunctions.
-    const speed = 2;
+    const speed = 5;
     const gravity = -9.81;
     
     const prevY = this.Player.model.position[1];
@@ -269,13 +300,35 @@ class Game {
       this.Player.velocity[1] = jumpCFG.jumpStrength;
       jumpST.jumpStartTime = currentTime;
       jumpST.isJumping = true;
+
+      // handle double jump usage
       if (!onGround && !isCoyote) {
         jumpST.usedDoubleJump = true; // mark double jump as used
+      }
+
+      const isDoubleJump = !onGround && !isCoyote && jumpCFG.allowDoubleJump && !jumpST.usedDoubleJump;
+      const maxRotations = isDoubleJump ? 2 : 1;
+
+      // trigger jump rotation
+      if (jumpST.rotationCount < maxRotations) {
+        this.triggerJumpRotation();
+        jumpST.rotationCount += 1;
       }
 
       jumpST.lastJumpPressTime = -999; // reset jump press time to avoid double triggering
     }
 
+    // Animation block for jump rotation
+    if (!this.Player.isOnGround && this.jumpState.spinRemaining > 0) {
+      const step = Math.min(this.jumpState.spinSpeed * deltaTime, this.jumpState.spinRemaining);
+      const axis = this.jumpState.spinAxis;
+      const signedStep = step * (this.jumpState.spinSign || 1);
+      this.Player.rotate(axis, signedStep);
+      this.jumpState.spinRemaining -= step;
+      console.log('[Jump] spin step:', { axis, step: signedStep, remaining: this.jumpState.spinRemaining });
+    }
+
+    // hold boost
     if (jumpST.isJumping) {
       const holdTime = currentTime - jumpST.jumpStartTime;
       const canHold = (jumpST.lastJumpPressTime === -999) ? true : (currentTime - jumpST.lastJumpPressTime) <= jumpCFG.maxHoldBoostTime;
@@ -288,6 +341,7 @@ class Game {
 
     this.Player.translate(vec3.fromValues(0, this.Player.velocity[1] * deltaTime, 0)); // update position based on velocity
 
+    // Platform collision detection
     const platform = getObject(this.state, "Platform");
     if (platform) {
       const pAABB = computeAABB(platform);
@@ -306,6 +360,8 @@ class Game {
         this.Player.model.position[1] = platformTop + 0.25 * this.Player.model.scale[1]; // snap to top of platform
         this.Player.velocity[1] = 0; // reset vertical velocity
         this.Player.isOnGround = true; // set on ground flag
+        this.jumpState.didRotateThisJump = false;
+        this.jumpState.spinRemaining = 0; // reset spin
       }
     }
 
@@ -313,6 +369,7 @@ class Game {
   
     this.checkCollision(this.Player); // check for collisions on the player every frame
 
+    // Camera follow logic
     if (this.cameraFollow && this.Player) {
       const desiredPosition = vec3.create();
       vec3.add(desiredPosition, this.Player.model.position, this.CameraOffset);
