@@ -9,6 +9,7 @@ try:
     server = Server()
     server.watch('*.html')
     server.watch('js/*.js')
+    server.watch('statefiles/*.json')
     server.serve(root='.', port=PORT) 
 
 except KeyboardInterrupt:

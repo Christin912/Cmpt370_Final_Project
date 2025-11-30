@@ -467,9 +467,9 @@ async function addMesh(object, vertShader = null, fragShader = null) {
 
 function computeAABB(object) {
   const half = [
-    object.model.scale[0] /4,
-    object.model.scale[1] /4,
-    object.model.scale[2] /4
+    object.model.scale[0] / 4,
+    object.model.scale[1] / 4,
+    object.model.scale[2] / 4
   ];
   const center = [
     object.model.position[0] + object.centroid[0] - 0.25 * object.model.scale[0],

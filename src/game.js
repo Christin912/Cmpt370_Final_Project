@@ -3,6 +3,8 @@ class Game {
     this.state = state;
     this.spawnedObjects = [];
     this.collidableObjects = [];
+
+    // Jump configuration
     this.jumpConfig = {
       jumpStrength: 7,
       holdBoostStrength: 0.3,
@@ -11,6 +13,8 @@ class Game {
       jumpBufferTime: 0.15,
       allowDoubleJump: true
     };
+
+    // Jump state
     this.jumpState = { 
       lastGroundTime: 0,
       lastJumpPressTime: -999,
@@ -22,11 +26,13 @@ class Game {
       spinRemaining: 0,
       spinSpeed: Math.PI * 2 // radians per second
     };
-  }
 
-  // example - we can add our own custom method to our game and call it using 'this.customMethod()'
-  customMethod() {
-    console.log("Custom method!");
+    // Platform management
+    this.platformSegments = new Map();
+    this.segmentLength = 20;
+    this.spawnAheadSegments = 5;
+    this.despawnBehindSegments = 2;
+    this.platformY = 0;
   }
 
   triggerJumpRotation() {
@@ -36,8 +42,8 @@ class Game {
     this.jumpState.spinAxis = movingHorizontally ? 'z' : 'x';
     const sign = movingHorizontally ? (horizontalDir >= 0 ? -1 : 1) : 1;
 
-    this.jumpState.spinRemaining = Math.PI / 2; // full rotation
-    this.jumpState.spinSpeed = Math.PI / 0.5; // radians per second
+    this.jumpState.spinRemaining = Math.PI / 2; // 90 degrees per jump
+    this.jumpState.spinSpeed = Math.PI / 0.25; // radians per second
     this.jumpState.spinSign = sign;
 
     console.log('[Jump] spin init:', {
@@ -47,8 +53,58 @@ class Game {
     speed: this.jumpState.spinSpeed
     });
   }
-  
 
+  // Platform segment generator
+  async spawnPlatformSegment(index) {
+    if (this.platformSegments.has(index)) return this.platformSegments.get(index);
+    const xCenter = index * this.segmentLength + this.segmentLength / 2;
+    const platform = await spawnObject({
+      name: `PlatformSegment_${index}`,
+      type: "cube",
+      material: {
+        diffuse: [1, 1, 0]
+      },
+      position: vec3.fromValues(xCenter, this.platformY, 0),
+      scale: vec3.fromValues(this.segmentLength * 2, 1, 1)
+    }, this.state);
+
+    this.platformSegments.set(index, platform);
+    this.createBoxCollider(platform);
+    console.log(`[Platform] Spawned segment ${index} at x=${xCenter}`);
+    return platform;
+  }
+
+  // Platform segment remover
+  despawnPlatformSegment(index) {
+    const name = `PlatformSegment_${index}`;
+    const platform = this.platformSegments.get(index);
+    if (platform) {
+      this.state.objects = this.state.objects.filter(obj => obj.name !== `PlatformSegment_${index}`);
+      this.collidableObjects = this.collidableObjects.filter(obj => obj.name !== `PlatformSegment_${index}`);
+    } else {
+      this.state.objects = this.state.objects.filter(obj => obj.name !== name); 
+      this.collidableObjects = this.collidableObjects.filter(obj => obj.name !== name);
+    }
+    this.platformSegments.delete(index);
+    console.log(`[Platform] Despawned segment ${index}`);
+  }
+
+  // Platform manager to spawn/despawn segments based on player position
+  async platformManager(centerIndex) {
+    const min = centerIndex - this.despawnBehindSegments;
+    const max = centerIndex + this.spawnAheadSegments;
+    for (let i = min; i <= max; i++) {
+      if (!this.platformSegments.has(i)) {
+        await this.spawnPlatformSegment(i);
+      } 
+    }
+    for (const index of Array.from(this.platformSegments.keys())) {
+      if (index < min || index > max) {
+        this.despawnPlatformSegment(index);
+      }
+    }
+  }
+  
   // example - create a collider on our object with various fields we might need (you will likely need to add/remove/edit how this works)
   createSphereCollider(object, radius, onCollide = null) {
     object.collider = {
@@ -89,6 +145,8 @@ class Game {
       const a = computeAABB(object);
       const b = computeAABB(otherObject);
 
+      const isGround = otherObject.name && otherObject.name.startsWith("PlatformSegment_");
+
       const dx = Math.abs(a.center[0] - b.center[0]);
       const dy = Math.abs(a.center[1] - b.center[1]);
       const dz = Math.abs(a.center[2] - b.center[2]);
@@ -102,7 +160,7 @@ class Game {
           if (object.velocity && object.velocity[1] < 0 && a.center[1] > b.center[1]) {
             const platformTop = b.center[1] + b.half[1];
             const playerHalf = a.half[1];
-            object.model.position[1] = platformTop + playerHalf; // snap
+            object.model.position[1] = platformTop + 0.25 * object.model.scale[1]; // snap
             object.velocity[1] = 0; // reset vertical velocity on Y collision
             object.isOnGround = true; // set on ground flag
             this.jumpState.rotationCount = 0;
@@ -113,7 +171,7 @@ class Game {
           } else {
             const dir = (a.center[1] < b.center[1]) ? -1 : 1;
             object.model.position[1] += dir * overlapY;
-            if (dir === 1 && object.velocity) {
+            if (dir === 1 && object.velocity && object.velocity[1] <= 0) {
               object.velocity[1] = 0;
               object.isOnGround = true;
               this.jumpState.rotationCount = 0;
@@ -123,7 +181,8 @@ class Game {
               this.jumpState.isJumping = false;
             }
           }
-        } else if (overlapX <= overlapZ) {
+        }
+        else if (!isGround && overlapX <= overlapZ) {
           const dir = (a.center[0] < b.center[0]) ? -1 : 1;
           object.model.position[0] += dir * overlapX;
         } else{
@@ -157,24 +216,25 @@ class Game {
     this.Player = getObject(this.state, "Player");
     this.Player.velocity = vec3.fromValues(0, 0, 0); // custom property
 
+    this.platformY = this.Player.model.position[1] - 0.5 * this.Player.model.scale[1] - 0.01; // slightly below player
+
     this.state.canvas.tabIndex = 0; // make canvas focusable
     this.state.canvas.focus();      // focus on the canvas to receive keyboard input
     window.focus();
 
-    window.addEventListener("keypress", e => {
-      if (e.key === ' ') console.log('[Input] keypress space');
-    });
-
-    const Platform = getObject(this.state, "Platform"); // we wont save this as instance var since we dont plan on using it in update
-    const gap = 10; // vertical space
-    if (Platform && this.Player) {
-      const platformTop = Platform.model.position[1] + 0.25 * Platform.model.scale[1];
-      const playerHalf = 0.25 * this.Player.model.scale[1];
-      this.Player.model.position[1] = platformTop + playerHalf + gap;
+    if (!this.Player) {
+      console.error('[Platform] Player not found at start');
+      return;
     }
 
+    // Initialize platform segments
+    const initialSegmentIndex = this.Player ? Math.floor(this.Player.model.position[0] / this.segmentLength) : 0;
+    await this.platformManager(initialSegmentIndex);
+
+    // Initialize Satellite
     this.Satellite = getObject(this.state, "Satellite");
 
+    // Camera setup
     this.CameraOffset = vec3.create();
     vec3.sub(this.CameraOffset, this.state.camera.position, this.Player.model.position);
 
@@ -196,23 +256,21 @@ class Game {
     };
 
     this.activeCameraMode = 'primary';
-    this.shiftHeld = false;
+    this._shiftHeld = false;
 
     // example - create sphere colliders on our two objects as an example, we give 2 objects colliders otherwise
     // no collision can happen
     this.createBoxCollider(this.Player, null, (otherObject) => {
       console.log(`This is a custom collision of ${otherObject.name}`)
     });
-    if (Platform)
-      this.createBoxCollider(Platform);
-
+    
     window.addEventListener("keydown", (e) => {
       const isSpace = e.code === "Space" || e.key === " " || e.key === "Spacebar";
       if (isSpace) {
         const now = performance.now() / 1000;
         this.jumpState.lastJumpPressTime = now;
         this.jumpState.keyHeld = true;
-        console.log("[Input] Space down at", now.toFixed(3));
+        //console.log("[Input] Space down at", now.toFixed(3));
       }
     });
 
@@ -221,42 +279,25 @@ class Game {
       if (isSpace) {
         this.jumpState.isJumping = false; // stop hold boost
         this.jumpState.keyHeld = false;
-        console.log("[Input] Space up");
+        //console.log("[Input] Space up");
       }
     });
 
     window.addEventListener("keydown", (e) => {
-      if (e.code === "ShiftLeft" || e.code === "ShiftRight" && !this._shiftHeld) {
+      if ((e.code === "ShiftLeft" || e.code === "ShiftRight") && !this._shiftHeld) {
         this._shiftHeld = true;
         this.activeCameraMode = (this.activeCameraMode === 'primary') ? 'alt' : 'primary';
-        console.log("[Input] Shift down - switch camera");
+        //console.log("[Input] Shift down - switch camera");
       }
     });
 
     window.addEventListener("keyup", (e) => {
       if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
         this._shiftHeld = false;
-        console.log("[Input] Shift up");
+        //console.log("[Input] Shift up");
       }
     });
 
-
-    /*
-    document.addEventListener("keydown", (e) => {
-      e.preventDefault();
-      if (e.code === "Space") {
-        this.jumpState.lastJumpPressTime = performance.now() / 1000;
-      }
-    });
-
-    document.addEventListener("keyup", (e) => {
-      e.preventDefault();
-      if (e.code === "Space") {
-        this.jumpState.isJumping = false; // stop hold boost
-      }
-    });
-  */
-    //this.customMethod(); // calling our custom method! (we could put spawning logic, collision logic etc in there ;) )
 
     // example: spawn some stuff before the scene starts
     // for (let i = 0; i < 10; i++) {
@@ -295,7 +336,7 @@ class Game {
   }
 
   // Runs once every frame non stop after the scene loads
-  onUpdate(deltaTime) {
+  async onUpdate(deltaTime) {
     // TODO - Here we can add game logic, like moving game objects, detecting collisions, you name it. Examples of functions can be found in sceneFunctions.
     const speed = 5;
     const gravity = -9.81;
@@ -366,29 +407,37 @@ class Game {
     this.Player.translate(vec3.fromValues(0, this.Player.velocity[1] * deltaTime, 0)); // update position based on velocity
 
     // Platform collision detection
-    const platform = getObject(this.state, "Platform");
-    if (platform) {
-      const pAABB = computeAABB(platform);
-      const playerAABB = computeAABB(this.Player);
-
-      const platformTop = pAABB.center[1] + pAABB.half[1];
+    {
       const playerBottomPrev = prevY + this.Player.centroid[1] - 0.25 * this.Player.model.scale[1];
       const playerBottomNow  = this.Player.model.position[1] + this.Player.centroid[1] - 0.25 * this.Player.model.scale[1];
+      let landed = false;
 
-      const horizontallyOverlapping = Math.abs(pAABB.center[0] - playerAABB.center[0]) <= (pAABB.half[0] + playerAABB.half[0]) &&
-                                      Math.abs(pAABB.center[2] - playerAABB.center[2]) <= (pAABB.half[2] + playerAABB.half[2]);
+      for (const segment of this.platformSegments.values()) {
+        const pAABB = computeAABB(segment);
+        const playerAABB = computeAABB(this.Player);
 
-      const crossedDownThroughTop = playerBottomPrev >= platformTop && playerBottomNow <= platformTop;
+        // Horizontal overlap check
+        const overlapX = Math.abs(pAABB.center[0] - playerAABB.center[0]) <= (pAABB.half[0] + playerAABB.half[0]);
+        const overlapZ = Math.abs(pAABB.center[2] - playerAABB.center[2]) <= (pAABB.half[2] + playerAABB.half[2]);
+        if (!overlapX || !overlapZ) continue;
 
-      if (horizontallyOverlapping && crossedDownThroughTop) {
-        this.Player.model.position[1] = platformTop + 0.25 * this.Player.model.scale[1]; // snap to top of platform
-        this.Player.velocity[1] = 0; // reset vertical velocity
-        this.Player.isOnGround = true; // set on ground flag
-        this.jumpState.rotationCount = 0;
-        this.jumpState.spinRemaining = 0; // reset spin
+        const platformTop = pAABB.center[1] + pAABB.half[1];
+        const crossedDownThroughTop = playerBottomPrev >= platformTop && playerBottomNow <= platformTop;
+        if (crossedDownThroughTop && this.Player.velocity[1] <= 0) {
+          // Snap to top
+          this.Player.model.position[1] = platformTop + 0.5 * this.Player.model.scale[1]; // snap to top of platform
+          this.Player.velocity[1] = 0;
+          this.Player.isOnGround = true;
+          this.jumpState.rotationCount = 0;
+          this.jumpState.spinRemaining = 0;
+          landed = true;
+          break;
+        }
+      }
+      if (!landed) {
+        // remain airborne; isOnGround already false earlier
       }
     }
-
     if (this.Satellite && this.Satellite.rotate) {
       this.Satellite.rotate('z', deltaTime * 0.2); // rotate the satellite slowly
     }
@@ -417,31 +466,9 @@ class Game {
         vec3.copy(this.state.camera.front, toPlayer);
       }
     }
-    /* Camera follow logic
-    if (this.cameraFollow && this.Player) {
-      const desiredPosition = vec3.create();
-      vec3.add(desiredPosition, this.Player.model.position, this.CameraOffset);
-
-      if (this.cameraFollow.smooth) {
-        const delta = vec3.create();
-        vec3.sub(delta, desiredPosition, this.state.camera.position);
-        vec3.scale(delta, delta, this.cameraFollow.smoothFactor);
-        vec3.add(this.state.camera.position, this.state.camera.position, delta);
-      } else {
-        vec3.copy(this.state.camera.position, desiredPosition);
-      }
-
-      if (this.cameraFollow.lockY) {
-        this.state.camera.position[1] = desiredPosition[1];
-      }
-
-      if (this.cameraFollow.lookAtPlayer) {
-        const toPlayer = vec3.create();
-        vec3.sub(toPlayer, this.Player.model.position, this.state.camera.position);
-        vec3.normalize(toPlayer, toPlayer);
-        vec3.copy(this.state.camera.front, toPlayer);
-      }
-    }*/
+    
+    const currentSegmentIndex = Math.floor(this.Player.model.position[0] / this.segmentLength);
+    await this.platformManager(currentSegmentIndex);
 
     // example: Rotate a single object we defined in our start method
     // this.cube.rotate('x', deltaTime * 0.5);
