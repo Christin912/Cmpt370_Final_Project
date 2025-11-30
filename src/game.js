@@ -33,11 +33,11 @@ class Game {
     const horizontalDir = this.Player.velocity && this.Player.velocity[0] || 1; // default forward if constant speed
     const movingHorizontally = Math.abs(horizontalDir) > 0;
 
-    this.jumpState.spinAxis = 'y' //movingHorizontally ? 'z' : 'x';
+    this.jumpState.spinAxis = movingHorizontally ? 'z' : 'x';
     const sign = movingHorizontally ? (horizontalDir >= 0 ? -1 : 1) : 1;
 
-    this.jumpState.spinRemaining = Math.PI; // full rotation
-    this.jumpState.spinSpeed = Math.PI / 0.25; // radians per second
+    this.jumpState.spinRemaining = Math.PI / 2; // full rotation
+    this.jumpState.spinSpeed = Math.PI / 0.5; // radians per second
     this.jumpState.spinSign = sign;
 
     console.log('[Jump] spin init:', {
@@ -178,13 +178,25 @@ class Game {
     this.CameraOffset = vec3.create();
     vec3.sub(this.CameraOffset, this.state.camera.position, this.Player.model.position);
 
-    this.cameraFollow = {
-      enabled: true,
-      smooth: true,
-      smoothFactor: 0.15,
-      lockY: true,
-      lookAtPlayer: true
+    this.CameraModes = {
+      primary: {
+        offset: vec3.clone(this.CameraOffset),
+        smooth: true,
+        smoothFactor: 0.1,
+        lockY: true,
+        lookAtPlayer: true
+      },
+      alt: {
+        offset: vec3.fromValues(this.CameraOffset[0], this.CameraOffset[1] + 5, this.CameraOffset[2] - 5),
+        smooth: true,
+        smoothFactor: 0.1,
+        lockY: false,
+        lookAtPlayer: true
+      },
     };
+
+    this.activeCameraMode = 'primary';
+    this.shiftHeld = false;
 
     // example - create sphere colliders on our two objects as an example, we give 2 objects colliders otherwise
     // no collision can happen
@@ -213,6 +225,21 @@ class Game {
       }
     });
 
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "ShiftLeft" || e.code === "ShiftRight" && !this._shiftHeld) {
+        this._shiftHeld = true;
+        this.activeCameraMode = (this.activeCameraMode === 'primary') ? 'alt' : 'primary';
+        console.log("[Input] Shift down - switch camera");
+      }
+    });
+
+    window.addEventListener("keyup", (e) => {
+      if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
+        this._shiftHeld = false;
+        console.log("[Input] Shift up");
+      }
+    });
+
 
     /*
     document.addEventListener("keydown", (e) => {
@@ -229,7 +256,7 @@ class Game {
       }
     });
   */
-    this.customMethod(); // calling our custom method! (we could put spawning logic, collision logic etc in there ;) )
+    //this.customMethod(); // calling our custom method! (we could put spawning logic, collision logic etc in there ;) )
 
     // example: spawn some stuff before the scene starts
     // for (let i = 0; i < 10; i++) {
@@ -306,15 +333,12 @@ class Game {
         jumpST.usedDoubleJump = true; // mark double jump as used
       }
 
-      const isDoubleJump = !onGround && !isCoyote && jumpCFG.allowDoubleJump && !jumpST.usedDoubleJump;
-      const maxRotations = isDoubleJump ? 2 : 1;
-
+      const maxRotations = jumpCFG.allowDoubleJump ? 2 : 1;
       // trigger jump rotation
       if (jumpST.rotationCount < maxRotations) {
         this.triggerJumpRotation();
         jumpST.rotationCount += 1;
       }
-
       jumpST.lastJumpPressTime = -999; // reset jump press time to avoid double triggering
     }
 
@@ -360,16 +384,40 @@ class Game {
         this.Player.model.position[1] = platformTop + 0.25 * this.Player.model.scale[1]; // snap to top of platform
         this.Player.velocity[1] = 0; // reset vertical velocity
         this.Player.isOnGround = true; // set on ground flag
-        this.jumpState.didRotateThisJump = false;
+        this.jumpState.rotationCount = 0;
         this.jumpState.spinRemaining = 0; // reset spin
       }
     }
 
-    this.Satellite.rotate('z', deltaTime * 0.2); // rotate the satellite slowly
-  
+    if (this.Satellite && this.Satellite.rotate) {
+      this.Satellite.rotate('z', deltaTime * 0.2); // rotate the satellite slowly
+    }
+
     this.checkCollision(this.Player); // check for collisions on the player every frame
 
-    // Camera follow logic
+    if (this.Player) {
+      const mode = this.CameraModes[this.activeCameraMode];
+      const desiredPosition = vec3.create();
+      vec3.add(desiredPosition, this.Player.model.position, mode.offset);
+      if (mode.smooth) {
+        const delta = vec3.create();
+        vec3.sub(delta, desiredPosition, this.state.camera.position);
+        vec3.scale(delta, delta, mode.smoothFactor);
+        vec3.add(this.state.camera.position, this.state.camera.position, delta);
+      } else {
+        vec3.copy(this.state.camera.position, desiredPosition);
+      }
+      if (mode.lockY) {
+        this.state.camera.position[1] = desiredPosition[1];
+      }
+      if (mode.lookAtPlayer) {
+        const toPlayer = vec3.create();
+        vec3.sub(toPlayer, this.Player.model.position, this.state.camera.position);
+        vec3.normalize(toPlayer, toPlayer);
+        vec3.copy(this.state.camera.front, toPlayer);
+      }
+    }
+    /* Camera follow logic
     if (this.cameraFollow && this.Player) {
       const desiredPosition = vec3.create();
       vec3.add(desiredPosition, this.Player.model.position, this.CameraOffset);
@@ -393,7 +441,7 @@ class Game {
         vec3.normalize(toPlayer, toPlayer);
         vec3.copy(this.state.camera.front, toPlayer);
       }
-    }
+    }*/
 
     // example: Rotate a single object we defined in our start method
     // this.cube.rotate('x', deltaTime * 0.5);
