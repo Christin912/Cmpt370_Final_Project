@@ -33,6 +33,184 @@ class Game {
     this.spawnAheadSegments = 5;
     this.despawnBehindSegments = 2;
     this.platformY = 0;
+
+    // Enemy management
+    this.enemies = new Map();
+    this.maxSpawnHeight = 1.5;
+    this.minSpawnHeight = 0;
+    this.minSpawnInterval = 2; // seconds
+    this.maxSpawnInterval = 5; // seconds
+    this.lastEnemySpawnTime = 0;
+
+    this.enemyConfig = {
+      spawnDistance : this.segmentLength * (this.spawnAheadSegments - 1),
+      despawnDistanceAhead : this.segmentLength * (this.spawnAheadSegments + 2),
+      maxActive : 12
+    };
+    this.nextEnemySpawnInterval = (Math.random() * (this.maxSpawnInterval - this.minSpawnInterval)) + this.minSpawnInterval;
+  }
+
+  async resetScene() {
+    console.log("[Game] Resetting scene");
+
+    // Remove all enemies
+    for (const [name] of this.enemies) {
+      this.state.objects = this.state.objects.filter(obj => obj.name !== name);
+      this.collidableObjects = this.collidableObjects.filter(obj => obj.name !== name);
+    }
+    this.enemies.clear();
+
+    // reset player
+    if (this.Player && this.initialPlayerPosition) {
+      vec3.copy(this.Player.model.position, this.initialPlayerPosition);
+      this.Player.velocity[1] = 0;
+      this.Player.isOnGround = false;
+      this.platformY = this.Player.model.position[1] - 0.5 * this.Player.model.scale[1] - 0.01; // slightly below player
+      //const initialSegmentIndex = Math.floor(this.Player.model.position[0] / this.segmentLength);
+      //await this.platformManager(initialSegmentIndex);
+    }
+
+    // reset jump state
+    this.jumpState.lastGroundTime = performance.now() / 1000;
+    this.jumpState.lastJumpPressTime = -999;
+    this.jumpState.jumpStartTime = 0;
+    this.jumpState.usedDoubleJump = false;
+    this.jumpState.isJumping = false;
+    this.jumpState.rotationCount = 0;
+    this.jumpState.spinRemaining = 0;
+
+    // reset platform segments
+    for (const index of Array.from(this.platformSegments.keys())) {
+      this.despawnPlatformSegment(index);
+    }
+
+    if (this.Player) {
+      const initialSegmentIndex = Math.floor(this.Player.model.position[0] / this.segmentLength);
+      await this.platformManager(initialSegmentIndex);
+      await platformUnderPlayer();
+    }
+
+    console.log("[Game] Scene reset complete");
+  }
+
+  async platformUnderPlayer() {
+    if (!this.Player) return;
+    const segmentIndex = Math.floor(this.Player.model.position[0] / this.segmentLength);
+
+    if (!this.platformSegments.has(segmentIndex)) {
+      await this.spawnPlatformSegment(segmentIndex);
+    }
+
+    const platform = this.platformSegments.get(segmentIndex);
+    if (!platform) return;
+
+    const pAABB = computeAABB(platform);
+    const platformTop = pAABB.center[1] + pAABB.half[1];
+
+    const leftBound = segmentIndex * this.segmentLength + 0.25 * this.Player.model.scale[0];
+    const rightBound = (segmentIndex + 1) * this.segmentLength - 0.25 * this.Player.model.scale[0];
+
+    if (this.Player.model.position[0] < leftBound) {
+      this.Player.model.position[0] = leftBound;
+    } else if (this.Player.model.position[0] > rightBound) {
+      this.Player.model.position[0] = rightBound;
+    }
+    this.Player.model.position[1] = platformTop + 0.05 * this.Player.model.scale[1]; // slightly above platform
+
+    this.Player.velocity[1] = 0;
+    this.Player.isOnGround = true;
+    this.jumpState.rotationCount = 0;
+    this.jumpState.spinRemaining = 0;
+    this.jumpState.lastGroundTime = performance.now() / 1000;
+    this.jumpState.usedDoubleJump = false;
+    this.jumpState.isJumping = false;
+  }
+  
+  async spawnEnemies() {
+    // Implementation for spawning enemies
+    if (!this.Player) return;
+    if (this.enemies.size >= this.enemyConfig.maxActive) return;
+
+    const xBase = this.Player.model.position[0] + this.enemyConfig.spawnDistance;
+    const x = xBase + (Math.random() * this.segmentLength);
+    const y = this.platformY + this.minSpawnHeight + Math.random() * (this.maxSpawnHeight - this.minSpawnHeight);
+    const z = 0;
+
+    const enemyName = `Enemy_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    const enemy = await spawnObject({
+      name : enemyName,
+      type: "mesh",
+      fileName : "tetrahedron.obj",
+      position: vec3.fromValues(x, y, z),
+      scale: vec3.fromValues(0.06, 0.06, 0.06),
+      material: {
+        diffuse: [0, 0, 1]
+      },
+    }, this.state);
+    enemy.enemyBehavior = {
+        rotspeed: {
+          x: (0.5 + Math.random()) * (Math.random() < 0.5 ? -1 : 1),
+          y: (0.5 + Math.random()) * (Math.random() < 0.5 ? -1 : 1),
+          z: (0.5 + Math.random()) * (Math.random() < 0.5 ? -1 : 1)
+        },
+        undulate: Math.random() < 0.5,
+        amp: 0.2 + Math.random() * 0.04,
+        freq: 0.5 + Math.random() * 0.8,
+        phase: Math.random() * Math.PI * 2,
+        baseY: y
+    };
+    this.enemies.set(enemyName, enemy);
+    this.createBoxCollider(enemy, [0.5, 0.5, 0.5]);
+    console.log(`[Enemy] Spawned ${enemyName} at (${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)})`);
+  }
+
+  despawnEnemies() {
+    // Implementation for despawning enemies
+    const toDelete = [];
+    for (const [name, enemy] of this.enemies) {
+      const dx = enemy.model.position[0] - this.Player.model.position[0];
+      if (dx > this.enemyConfig.despawnDistanceAhead || dx < -this.segmentLength * this.despawnBehindSegments) {
+        toDelete.push(name);
+      }
+    }
+
+    for (const name of toDelete) {
+      //const enemy = this.enemies.get(name);
+      this.state.objects = this.state.objects.filter(obj => obj.name !== name);
+      this.collidableObjects = this.collidableObjects.filter(obj => obj.name !== name);
+      this.enemies.delete(name);
+      console.log(`[Enemy] Despawned ${name}`);
+    }
+  }
+
+  async enemyManager() {
+    // Implementation for managing enemies
+    const currentTime = performance.now() / 1000;
+    if (currentTime - this.lastEnemySpawnTime >= this.nextEnemySpawnInterval) {
+      await this.spawnEnemies();
+      this.lastEnemySpawnTime = currentTime;
+      this.nextEnemySpawnInterval = (Math.random() * (this.maxSpawnInterval - this.minSpawnInterval)) + this.minSpawnInterval;
+    }
+    this.despawnEnemies();
+  }
+
+  updateEnemies(deltaTime, currentTime) {
+    for (const enemy of this.enemies.values()) {
+      const behavior = enemy.enemyBehavior;
+      if (!behavior) continue;
+    
+      if (behavior.rotspeed) {
+        if (behavior.rotspeed.x) enemy.rotate('x', behavior.rotspeed.x * deltaTime);
+        if (behavior.rotspeed.y) enemy.rotate('y', behavior.rotspeed.y * deltaTime);
+        if (behavior.rotspeed.z) enemy.rotate('z', behavior.rotspeed.z * deltaTime);
+      }
+
+      if (behavior.undulate) {
+        const twoPi = Math.PI * 2;
+        const y = behavior.baseY + Math.sin(twoPi * behavior.freq * currentTime + behavior.phase) * behavior.amp;
+        enemy.model.position[1] = y;
+      }
+    }
   }
 
   triggerJumpRotation() {
@@ -46,12 +224,11 @@ class Game {
     this.jumpState.spinSpeed = Math.PI / 0.25; // radians per second
     this.jumpState.spinSign = sign;
 
-    console.log('[Jump] spin init:', {
+    /*console.log('[Jump] spin init:', {
     axis: this.jumpState.spinAxis,
     sign: this.jumpState.spinSign,
     remaining: this.jumpState.spinRemaining,
-    speed: this.jumpState.spinSpeed
-    });
+    speed: this.jumpState.spinSpeed);*/
   }
 
   // Platform segment generator
@@ -159,7 +336,7 @@ class Game {
         if (overlapY <= overlapX && overlapY <= overlapZ) {
           if (object.velocity && object.velocity[1] < 0 && a.center[1] > b.center[1]) {
             const platformTop = b.center[1] + b.half[1];
-            const playerHalf = a.half[1];
+            //const playerHalf = a.half[1];
             object.model.position[1] = platformTop + 0.25 * object.model.scale[1]; // snap
             object.velocity[1] = 0; // reset vertical velocity on Y collision
             object.isOnGround = true; // set on ground flag
@@ -214,6 +391,7 @@ class Game {
 
     // example - set an object in onStart before starting our render loop!
     this.Player = getObject(this.state, "Player");
+    this.initialPlayerPosition = vec3.clone(this.Player.model.position);
     this.Player.velocity = vec3.fromValues(0, 0, 0); // custom property
 
     this.platformY = this.Player.model.position[1] - 0.5 * this.Player.model.scale[1] - 0.01; // slightly below player
@@ -261,7 +439,11 @@ class Game {
     // example - create sphere colliders on our two objects as an example, we give 2 objects colliders otherwise
     // no collision can happen
     this.createBoxCollider(this.Player, null, (otherObject) => {
-      console.log(`This is a custom collision of ${otherObject.name}`)
+      if (otherObject.name.startsWith("Enemy_")) {
+        setTimeout(() => { this.resetScene(); }, 10);
+        return;
+      }
+      console.log(`[Collision] Player collided with ${otherObject.name}`);
     });
     
     window.addEventListener("keydown", (e) => {
@@ -417,9 +599,13 @@ class Game {
         const playerAABB = computeAABB(this.Player);
 
         // Horizontal overlap check
-        const overlapX = Math.abs(pAABB.center[0] - playerAABB.center[0]) <= (pAABB.half[0] + playerAABB.half[0]);
-        const overlapZ = Math.abs(pAABB.center[2] - playerAABB.center[2]) <= (pAABB.half[2] + playerAABB.half[2]);
-        if (!overlapX || !overlapZ) continue;
+        //const overlapX = Math.abs(pAABB.center[0] - playerAABB.center[0]) <= (pAABB.half[0] + playerAABB.half[0]);
+        //const overlapZ = Math.abs(pAABB.center[2] - playerAABB.center[2]) <= (pAABB.half[2] + playerAABB.half[2]);
+        //const epsilon = 0.05;
+        const overlapX = (pAABB.half[0] + playerAABB.half[0]) - Math.abs(pAABB.center[0] - playerAABB.center[0]);
+        const overlapZ = (pAABB.half[2] + playerAABB.half[2]) - Math.abs(pAABB.center[2] - playerAABB.center[2]);
+        //if (!overlapX || !overlapZ) continue;
+        if (overlapX <= 0 || overlapZ <= 0) continue; // require significant horizontal overlap
 
         const platformTop = pAABB.center[1] + pAABB.half[1];
         const crossedDownThroughTop = playerBottomPrev >= platformTop && playerBottomNow <= platformTop;
@@ -469,6 +655,8 @@ class Game {
     
     const currentSegmentIndex = Math.floor(this.Player.model.position[0] / this.segmentLength);
     await this.platformManager(currentSegmentIndex);
+    await this.enemyManager(deltaTime);
+    this.updateEnemies(deltaTime, currentTime);
 
     // example: Rotate a single object we defined in our start method
     // this.cube.rotate('x', deltaTime * 0.5);

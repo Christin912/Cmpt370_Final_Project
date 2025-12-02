@@ -368,6 +368,7 @@ function getTextures(gl, imgPath) {
   }
 }
 
+/*
 function parseOBJFileToJSON(objFileURL) {
   return new Promise((resolve, reject) => {
     fetch("/assets/" + objFileURL)
@@ -382,6 +383,23 @@ function parseOBJFileToJSON(objFileURL) {
         console.error(err);
         reject(err);
       })
+  });
+}*/
+function parseOBJFileToJSON(objFileURL) {
+  return new Promise((resolve, reject) => {
+    fetch("/assets/" + objFileURL)
+      .then((data) => data.text())
+      .then((text) => {
+        const loader = new OBJLoader();   // use an instance
+        // optional safety: define onError so the parser can report lines gracefully
+        loader.onError = (msg) => console.warn("OBJ parse:", msg);
+        const mesh = loader.parse(text);
+        resolve(mesh);
+      })
+      .catch((err) => {
+        console.error(err);
+        reject(err);
+      });
   });
 }
 
