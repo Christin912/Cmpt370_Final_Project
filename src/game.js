@@ -87,7 +87,7 @@ class Game {
     if (this.Player) {
       const initialSegmentIndex = Math.floor(this.Player.model.position[0] / this.segmentLength);
       await this.platformManager(initialSegmentIndex);
-      await platformUnderPlayer();
+      await this.platformUnderPlayer();
     }
 
     console.log("[Game] Scene reset complete");
@@ -107,8 +107,11 @@ class Game {
     const pAABB = computeAABB(platform);
     const platformTop = pAABB.center[1] + pAABB.half[1];
 
-    const leftBound = segmentIndex * this.segmentLength + 0.25 * this.Player.model.scale[0];
-    const rightBound = (segmentIndex + 1) * this.segmentLength - 0.25 * this.Player.model.scale[0];
+    const margin = 0.35 * this.Player.model.scale[0];
+    const leftBound = pAABB.center[0] - pAABB.half[0] + margin;
+    const rightBound = pAABB.center[0] + pAABB.half[0] - margin;
+
+    this.platformY = pAABB.center[1];
 
     if (this.Player.model.position[0] < leftBound) {
       this.Player.model.position[0] = leftBound;
@@ -160,7 +163,7 @@ class Game {
         baseY: y
     };
     this.enemies.set(enemyName, enemy);
-    this.createBoxCollider(enemy, [0.5, 0.5, 0.5]);
+    this.createBoxCollider(enemy, [1.5, 1.5, 1.5]);
     console.log(`[Enemy] Spawned ${enemyName} at (${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)})`);
   }
 
@@ -593,6 +596,7 @@ class Game {
       const playerBottomPrev = prevY + this.Player.centroid[1] - 0.25 * this.Player.model.scale[1];
       const playerBottomNow  = this.Player.model.position[1] + this.Player.centroid[1] - 0.25 * this.Player.model.scale[1];
       let landed = false;
+      const candidates = [];
 
       for (const segment of this.platformSegments.values()) {
         const pAABB = computeAABB(segment);
@@ -611,14 +615,39 @@ class Game {
         const crossedDownThroughTop = playerBottomPrev >= platformTop && playerBottomNow <= platformTop;
         if (crossedDownThroughTop && this.Player.velocity[1] <= 0) {
           // Snap to top
-          this.Player.model.position[1] = platformTop + 0.5 * this.Player.model.scale[1]; // snap to top of platform
-          this.Player.velocity[1] = 0;
-          this.Player.isOnGround = true;
-          this.jumpState.rotationCount = 0;
-          this.jumpState.spinRemaining = 0;
-          landed = true;
-          break;
+          candidates.push({ pAABB, platformTop, overlapX});
         }
+          //this.Player.model.position[1] = platformTop + 0.5 * this.Player.model.scale[1]; // snap to top of platform
+          //this.Player.velocity[1] = 0;
+          //this.Player.isOnGround = true;
+          //this.jumpState.rotationCount = 0;
+          //this.jumpState.spinRemaining = 0;
+          //landed = true;
+          //break;
+        
+      }
+
+      if (candidates.length > 0) {
+        const best = candidates.reduce((a, b) => (b.overlapX > a.overlapX) ? b : a);
+        const margin = 0.35 * this.Player.model.scale[0];
+        const leftBound = best.pAABB.center[0] - best.pAABB.half[0] + margin;
+        const rightBound = best.pAABB.center[0] + best.pAABB.half[0] - margin;
+
+        if (this.Player.model.position[0] < leftBound) {
+          this.Player.model.position[0] = leftBound;
+        } else if (this.Player.model.position[0] > rightBound) {
+          this.Player.model.position[0] = rightBound;
+        }
+
+        this.Player.model.position[1] = best.platformTop + 0.05 * this.Player.model.scale[1]; // slightly above platform
+        this.Player.velocity[1] = 0;
+        this.Player.isOnGround = true;
+        this.jumpState.rotationCount = 0;
+        this.jumpState.spinRemaining = 0;
+        this.jumpState.lastGroundTime = currentTime;
+        this.jumpState.usedDoubleJump = false;
+        this.jumpState.isJumping = false;
+        landed = true;
       }
       if (!landed) {
         // remain airborne; isOnGround already false earlier
