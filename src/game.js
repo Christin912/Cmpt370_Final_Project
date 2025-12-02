@@ -3,6 +3,8 @@ class Game {
     this.state = state;
     this.spawnedObjects = [];
     this.collidableObjects = [];
+    this.score = 0;
+    this.playerSpeed = 5;
 
     // Jump configuration
     this.jumpConfig = {
@@ -52,6 +54,9 @@ class Game {
 
   async resetScene() {
     console.log("[Game] Resetting scene");
+
+    this.score = 0;
+    this.playerSpeed = 5;
 
     // Remove all enemies
     for (const [name] of this.enemies) {
@@ -392,6 +397,9 @@ class Game {
       e.preventDefault();
     }, false);
 
+    this.score = 0;
+    this.playerSpeed = 5; // initial player speed
+
     // example - set an object in onStart before starting our render loop!
     this.Player = getObject(this.state, "Player");
     this.initialPlayerPosition = vec3.clone(this.Player.model.position);
@@ -411,6 +419,8 @@ class Game {
     // Initialize platform segments
     const initialSegmentIndex = this.Player ? Math.floor(this.Player.model.position[0] / this.segmentLength) : 0;
     await this.platformManager(initialSegmentIndex);
+    await this.spawnEnemies();
+    this.lastEnemySpawnTime = performance.now() / 1000;
 
     // Initialize Satellite
     this.Satellite = getObject(this.state, "Satellite");
@@ -523,11 +533,49 @@ class Game {
   // Runs once every frame non stop after the scene loads
   async onUpdate(deltaTime) {
     // TODO - Here we can add game logic, like moving game objects, detecting collisions, you name it. Examples of functions can be found in sceneFunctions.
-    const speed = 5;
     const gravity = -9.81;
-    
+    this.score += deltaTime * 10; // increase score over time
+    const el = document.getElementById('score');
+    if (el) {
+      el.textContent = `Score: ${Math.floor(this.score)}`;
+    }
+
+    if (this.score >= 5000) {
+      this.playerSpeed = 100; // increase player speed after reaching score threshold
+    }    
+    else if (this.score >= 3000 && this.score < 5000) {
+      this.playerSpeed = 85; // increase player speed after reaching score threshold
+    } 
+    else if (this.score >= 2750 && this.score < 3000) {
+      this.playerSpeed = 70; // increase player speed after reaching score threshold
+    }
+    else if (this.score >= 2500 && this.score < 2750) {
+      this.playerSpeed = 55; // increase player speed after reaching score threshold
+    }
+    else if (this.score >= 2250 && this.score < 2500) {
+      this.playerSpeed = 40; // increase player speed after reaching score threshold
+    }
+    else if (this.score >= 2000 && this.score < 2250) {
+      this.playerSpeed = 30; // increase player speed after reaching score threshold
+    }
+    else if (this.score >= 1750 && this.score < 2000) {
+      this.playerSpeed = 25; // increase player speed after reaching score threshold
+    }
+    else if (this.score >= 1500 && this.score < 1750) {
+      this.playerSpeed = 20; // increase player speed after reaching score threshold
+    }
+    else if (this.score >= 1000 && this.score < 1500) {
+      this.playerSpeed = 15; // increase player speed after reaching score threshold
+    }
+    else if (this.score >= 750 && this.score < 1000) {
+      this.playerSpeed = 10; // increase player speed after reaching score threshold
+    }
+    else if (this.score >= 500 && this.score < 750) {
+      this.playerSpeed = 7; // increase player speed after reaching score threshold
+    }
+
     const prevY = this.Player.model.position[1];
-    this.Player.translate(vec3.fromValues(speed * deltaTime, 0, 0)); // move player along x-axis
+    this.Player.translate(vec3.fromValues(this.playerSpeed * deltaTime, 0, 0)); // move player along x-axis
 
     // apply gravity
     this.Player.velocity[1] += gravity * deltaTime; // apply gravity to vertical velocity
