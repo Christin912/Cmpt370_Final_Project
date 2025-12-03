@@ -605,12 +605,6 @@ class Game {
     const prevY = this.Player.model.position[1];
     this.Player.translate(vec3.fromValues(this.playerSpeed * deltaTime, 0, 0)); // move player along x-axis
 
-    // ====== ROLLING ANIMATION ======
-    // Make the cube rotate/flip as it moves forward (like Geometry Dash!)
-    // Calculate rotation speed based on player speed so it looks natural
-    const rotationSpeed = this.playerSpeed * 0.5; // Adjust 0.5 to make it roll faster/slower
-    this.Player.rotate('z', -rotationSpeed * deltaTime); // Negative for forward rolling motion
-
     // apply gravity
     this.Player.velocity[1] += gravity * deltaTime; // apply gravity to vertical velocity
     if (this.Player.velocity[1] < -50) {
