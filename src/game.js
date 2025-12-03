@@ -425,28 +425,43 @@ class Game {
     // Initialize Satellite
     this.Satellite = getObject(this.state, "Satellite");
 
-    // Camera setup
+    // ====== CAMERA SETUP ======
+    // Calculate the initial offset between camera and player
     this.CameraOffset = vec3.create();
     vec3.sub(this.CameraOffset, this.state.camera.position, this.Player.model.position);
 
+    // Define all available camera modes
     this.CameraModes = {
+      // Primary view: Original top-down-ish view
       primary: {
-        offset: vec3.clone(this.CameraOffset),
-        smooth: true,
-        smoothFactor: 0.1,
-        lockY: true,
-        lookAtPlayer: true
+        offset: vec3.clone(this.CameraOffset),  // Use the original offset from scene file
+        smooth: true,                            // Enable smooth camera movement
+        smoothFactor: 0.1,                       // How fast camera catches up (0-1)
+        lockY: true,                             // Keep Y position constant
+        lookAtPlayer: true                       // Camera always looks at player
       },
+      // Alternate view: Higher bird's eye view
       alt: {
         offset: vec3.fromValues(this.CameraOffset[0], this.CameraOffset[1] + 5, this.CameraOffset[2] - 5),
         smooth: true,
         smoothFactor: 0.1,
-        lockY: false,
+        lockY: false,                            // Allow Y to change
         lookAtPlayer: true
       },
+      // NEW: Third person view - follows behind the player like a chase camera
+      third_person: {
+        offset: vec3.fromValues(-3, 2, 0),       // 3 units behind (negative X), 2 units above, centered on Z
+        smooth: true,
+        smoothFactor: 0.15,                      // Slightly more responsive than other views
+        lockY: false,                            // Allow Y to change with player jumps
+        lookAtPlayer: true                       // Always focus on player
+      }
     };
 
+    // Start with the primary camera mode
     this.activeCameraMode = 'primary';
+    
+    // Track if shift key is being held (prevents multiple switches from one press)
     this._shiftHeld = false;
 
     // example - create sphere colliders on our two objects as an example, we give 2 objects colliders otherwise
@@ -459,6 +474,9 @@ class Game {
       console.log(`[Collision] Player collided with ${otherObject.name}`);
     });
     
+    // ====== INPUT HANDLERS ======
+    
+    // Space bar for jumping
     window.addEventListener("keydown", (e) => {
       const isSpace = e.code === "Space" || e.key === " " || e.key === "Spacebar";
       if (isSpace) {
@@ -478,18 +496,28 @@ class Game {
       }
     });
 
+    // Shift key to cycle through camera modes
     window.addEventListener("keydown", (e) => {
       if ((e.code === "ShiftLeft" || e.code === "ShiftRight") && !this._shiftHeld) {
         this._shiftHeld = true;
-        this.activeCameraMode = (this.activeCameraMode === 'primary') ? 'alt' : 'primary';
-        //console.log("[Input] Shift down - switch camera");
+        
+        // Cycle through all three camera modes: primary -> alt -> third_person -> primary
+        if (this.activeCameraMode === 'primary') {
+          this.activeCameraMode = 'alt';
+          console.log("[Camera] Switched to alt view");
+        } else if (this.activeCameraMode === 'alt') {
+          this.activeCameraMode = 'third_person';
+          console.log("[Camera] Switched to third person view");
+        } else {
+          this.activeCameraMode = 'primary';
+          console.log("[Camera] Switched to primary view");
+        }
       }
     });
 
     window.addEventListener("keyup", (e) => {
       if (e.code === "ShiftLeft" || e.code === "ShiftRight") {
         this._shiftHeld = false;
-        //console.log("[Input] Shift up");
       }
     });
 
@@ -576,6 +604,12 @@ class Game {
 
     const prevY = this.Player.model.position[1];
     this.Player.translate(vec3.fromValues(this.playerSpeed * deltaTime, 0, 0)); // move player along x-axis
+
+    // ====== ROLLING ANIMATION ======
+    // Make the cube rotate/flip as it moves forward (like Geometry Dash!)
+    // Calculate rotation speed based on player speed so it looks natural
+    const rotationSpeed = this.playerSpeed * 0.5; // Adjust 0.5 to make it roll faster/slower
+    this.Player.rotate('z', -rotationSpeed * deltaTime); // Negative for forward rolling motion
 
     // apply gravity
     this.Player.velocity[1] += gravity * deltaTime; // apply gravity to vertical velocity
@@ -707,21 +741,34 @@ class Game {
 
     this.checkCollision(this.Player); // check for collisions on the player every frame
 
+    // ====== CAMERA UPDATE LOGIC ======
     if (this.Player) {
+      // Get the currently active camera mode settings
       const mode = this.CameraModes[this.activeCameraMode];
+      
+      // Calculate where the camera should be based on player position + offset
       const desiredPosition = vec3.create();
       vec3.add(desiredPosition, this.Player.model.position, mode.offset);
+      
+      // Apply smooth camera movement if enabled
       if (mode.smooth) {
+        // Calculate the difference between current and desired position
         const delta = vec3.create();
         vec3.sub(delta, desiredPosition, this.state.camera.position);
+        // Move only a fraction of that distance (smoothFactor) each frame
         vec3.scale(delta, delta, mode.smoothFactor);
         vec3.add(this.state.camera.position, this.state.camera.position, delta);
       } else {
+        // No smoothing - jump directly to desired position
         vec3.copy(this.state.camera.position, desiredPosition);
       }
+      
+      // Lock Y axis if specified (keeps camera at constant height)
       if (mode.lockY) {
         this.state.camera.position[1] = desiredPosition[1];
       }
+      
+      // Make camera always look at the player if enabled
       if (mode.lookAtPlayer) {
         const toPlayer = vec3.create();
         vec3.sub(toPlayer, this.Player.model.position, this.state.camera.position);
