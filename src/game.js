@@ -52,6 +52,7 @@ class Game {
     this.nextEnemySpawnInterval = (Math.random() * (this.maxSpawnInterval - this.minSpawnInterval)) + this.minSpawnInterval;
   }
 
+  // reset scene to initial state
   async resetScene() {
     console.log("[Game] Resetting scene");
 
@@ -98,6 +99,7 @@ class Game {
     console.log("[Game] Scene reset complete");
   }
 
+  // position player above platform
   async platformUnderPlayer() {
     if (!this.Player) return;
     const segmentIndex = Math.floor(this.Player.model.position[0] / this.segmentLength);
@@ -134,8 +136,8 @@ class Game {
     this.jumpState.isJumping = false;
   }
   
+  // spawn enemies ahead of player
   async spawnEnemies() {
-    // Implementation for spawning enemies
     if (!this.Player) return;
     if (this.enemies.size >= this.enemyConfig.maxActive) return;
 
@@ -172,8 +174,8 @@ class Game {
     console.log(`[Enemy] Spawned ${enemyName} at (${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)})`);
   }
 
+  // remove enemies whem they are behind player
   despawnEnemies() {
-    // Implementation for despawning enemies
     const toDelete = [];
     for (const [name, enemy] of this.enemies) {
       const dx = enemy.model.position[0] - this.Player.model.position[0];
@@ -191,8 +193,8 @@ class Game {
     }
   }
 
+  // enemy manager
   async enemyManager() {
-    // Implementation for managing enemies
     const currentTime = performance.now() / 1000;
     if (currentTime - this.lastEnemySpawnTime >= this.nextEnemySpawnInterval) {
       await this.spawnEnemies();
@@ -202,6 +204,7 @@ class Game {
     this.despawnEnemies();
   }
 
+  // randomize enemy behaviors
   updateEnemies(deltaTime, currentTime) {
     for (const enemy of this.enemies.values()) {
       const behavior = enemy.enemyBehavior;
@@ -221,6 +224,7 @@ class Game {
     }
   }
 
+  // player jump rotation trigger
   triggerJumpRotation() {
     const horizontalDir = this.Player.velocity && this.Player.velocity[0] || 1; // default forward if constant speed
     const movingHorizontally = Math.abs(horizontalDir) > 0;
@@ -290,7 +294,7 @@ class Game {
     }
   }
   
-  // example - create a collider on our object with various fields we might need (you will likely need to add/remove/edit how this works)
+  // sphere collider creation (unused)
   createSphereCollider(object, radius, onCollide = null) {
     object.collider = {
       type: "SPHERE",
@@ -302,6 +306,7 @@ class Game {
     this.collidableObjects.push(object);
   }
 
+  // box collider creation
   createBoxCollider(object, dimensions = null, onCollide = null) {
     const scale = [
       object.model.scale[0],
@@ -318,11 +323,10 @@ class Game {
     this.collidableObjects.push(object);
   }
 
-  // example - function to check if an object is colliding with collidable objects
+  // function to check if an object is colliding with collidable objects
   checkCollision(object) {
     // loop over all the other collidable objects 
     this.collidableObjects.forEach(otherObject => {
-      // probably don't need to collide with ourselves
       if (object.name === otherObject.name || !object.collider || !otherObject.collider) {
         return;
       }
@@ -339,12 +343,12 @@ class Game {
       const overlapX = (a.half[0] + b.half[0]) - dx;
       const overlapY = (a.half[1] + b.half[1]) - dy;
       const overlapZ = (a.half[2] + b.half[2]) - dz;
-      
+
+      // When player lands, reset jump state and snap to platform
       if (overlapX > 0 && overlapY > 0 && overlapZ > 0) {
         if (overlapY <= overlapX && overlapY <= overlapZ) {
           if (object.velocity && object.velocity[1] < 0 && a.center[1] > b.center[1]) {
             const platformTop = b.center[1] + b.half[1];
-            //const playerHalf = a.half[1];
             object.model.position[1] = platformTop + 0.25 * object.model.scale[1]; // snap
             object.velocity[1] = 0; // reset vertical velocity on Y collision
             object.isOnGround = true; // set on ground flag
@@ -397,10 +401,10 @@ class Game {
       e.preventDefault();
     }, false);
 
-    this.score = 0;
+    this.score = 0; // initial score
     this.playerSpeed = 5; // initial player speed
 
-    // example - set an object in onStart before starting our render loop!
+    // set up player, and platform Y level
     this.Player = getObject(this.state, "Player");
     this.initialPlayerPosition = vec3.clone(this.Player.model.position);
     this.Player.velocity = vec3.fromValues(0, 0, 0); // custom property
@@ -411,7 +415,7 @@ class Game {
     this.state.canvas.focus();      // focus on the canvas to receive keyboard input
     window.focus();
 
-    if (!this.Player) {
+    if (!this.Player) { // safety check for player
       console.error('[Platform] Player not found at start');
       return;
     }
@@ -440,17 +444,9 @@ class Game {
         lockY: true,                             // Keep Y position constant
         lookAtPlayer: true                       // Camera always looks at player
       },
-      // Alternate view: Higher bird's eye view
-      alt: {
-        offset: vec3.fromValues(this.CameraOffset[0], this.CameraOffset[1] + 5, this.CameraOffset[2] - 5),
-        smooth: true,
-        smoothFactor: 0.1,
-        lockY: false,                            // Allow Y to change
-        lookAtPlayer: true
-      },
-      // NEW: Third person view - follows behind the player like a chase camera
+      // Alternate view: 3rd Person behind the player
       third_person: {
-        offset: vec3.fromValues(-3, 2, 0),       // 3 units behind (negative X), 2 units above, centered on Z
+        offset: vec3.fromValues(-3, 2, 1),       // 3 units behind (negative X), 2 units above, centered on Z
         smooth: true,
         smoothFactor: 0.15,                      // Slightly more responsive than other views
         lockY: false,                            // Allow Y to change with player jumps
@@ -464,8 +460,7 @@ class Game {
     // Track if shift key is being held (prevents multiple switches from one press)
     this._shiftHeld = false;
 
-    // example - create sphere colliders on our two objects as an example, we give 2 objects colliders otherwise
-    // no collision can happen
+    // ====== COLLIDER SETUP ======
     this.createBoxCollider(this.Player, null, (otherObject) => {
       if (otherObject.name.startsWith("Enemy_")) {
         setTimeout(() => { this.resetScene(); }, 10);
@@ -475,7 +470,6 @@ class Game {
     });
     
     // ====== INPUT HANDLERS ======
-    
     // Space bar for jumping
     window.addEventListener("keydown", (e) => {
       const isSpace = e.code === "Space" || e.key === " " || e.key === "Spacebar";
@@ -503,12 +497,10 @@ class Game {
         
         // Cycle through all three camera modes: primary -> alt -> third_person -> primary
         if (this.activeCameraMode === 'primary') {
-          this.activeCameraMode = 'alt';
-          console.log("[Camera] Switched to alt view");
-        } else if (this.activeCameraMode === 'alt') {
           this.activeCameraMode = 'third_person';
-          console.log("[Camera] Switched to third person view");
-        } else {
+          console.log("[Camera] Switched to alt view");
+        } 
+        else {
           this.activeCameraMode = 'primary';
           console.log("[Camera] Switched to primary view");
         }
@@ -563,11 +555,13 @@ class Game {
     // TODO - Here we can add game logic, like moving game objects, detecting collisions, you name it. Examples of functions can be found in sceneFunctions.
     const gravity = -9.81;
     this.score += deltaTime * 10; // increase score over time
-    const el = document.getElementById('score');
-    if (el) {
-      el.textContent = `Score: ${Math.floor(this.score)}`;
+
+    const el = document.getElementById('score'); // link to score display element
+    if (el) { 
+      el.textContent = `Score: ${Math.floor(this.score)}`; // update score display
     }
 
+    // speed increase logic
     if (this.score >= 5000) {
       this.playerSpeed = 100; // increase player speed after reaching score threshold
     }    
@@ -611,6 +605,8 @@ class Game {
       this.Player.velocity[1] = -50; // terminal velocity
     }
 
+
+    // jumping logic
     const currentTime = performance.now() / 1000;
     const jumpCFG = this.jumpConfig;
     const jumpST = this.jumpState;
@@ -679,12 +675,8 @@ class Game {
         const playerAABB = computeAABB(this.Player);
 
         // Horizontal overlap check
-        //const overlapX = Math.abs(pAABB.center[0] - playerAABB.center[0]) <= (pAABB.half[0] + playerAABB.half[0]);
-        //const overlapZ = Math.abs(pAABB.center[2] - playerAABB.center[2]) <= (pAABB.half[2] + playerAABB.half[2]);
-        //const epsilon = 0.05;
         const overlapX = (pAABB.half[0] + playerAABB.half[0]) - Math.abs(pAABB.center[0] - playerAABB.center[0]);
         const overlapZ = (pAABB.half[2] + playerAABB.half[2]) - Math.abs(pAABB.center[2] - playerAABB.center[2]);
-        //if (!overlapX || !overlapZ) continue;
         if (overlapX <= 0 || overlapZ <= 0) continue; // require significant horizontal overlap
 
         const platformTop = pAABB.center[1] + pAABB.half[1];
@@ -693,16 +685,9 @@ class Game {
           // Snap to top
           candidates.push({ pAABB, platformTop, overlapX});
         }
-          //this.Player.model.position[1] = platformTop + 0.5 * this.Player.model.scale[1]; // snap to top of platform
-          //this.Player.velocity[1] = 0;
-          //this.Player.isOnGround = true;
-          //this.jumpState.rotationCount = 0;
-          //this.jumpState.spinRemaining = 0;
-          //landed = true;
-          //break;
-        
       }
 
+      // select best candidate platform to land on (prevent corner cases)
       if (candidates.length > 0) {
         const best = candidates.reduce((a, b) => (b.overlapX > a.overlapX) ? b : a);
         const margin = 0.35 * this.Player.model.scale[0];
@@ -729,8 +714,10 @@ class Game {
         // remain airborne; isOnGround already false earlier
       }
     }
+
+    // rotate satellite
     if (this.Satellite && this.Satellite.rotate) {
-      this.Satellite.rotate('z', deltaTime * 0.2); // rotate the satellite slowly
+      this.Satellite.rotate('z', deltaTime * 0.2);
     }
 
     this.checkCollision(this.Player); // check for collisions on the player every frame
@@ -771,10 +758,10 @@ class Game {
       }
     }
     
-    const currentSegmentIndex = Math.floor(this.Player.model.position[0] / this.segmentLength);
-    await this.platformManager(currentSegmentIndex);
-    await this.enemyManager(deltaTime);
-    this.updateEnemies(deltaTime, currentTime);
+    const currentSegmentIndex = Math.floor(this.Player.model.position[0] / this.segmentLength); // determine current platform segment index
+    await this.platformManager(currentSegmentIndex); // manage platform segments based on player position
+    await this.enemyManager(deltaTime); // manage enemy spawning/despawning
+    this.updateEnemies(deltaTime, currentTime); // update enemy behaviors
 
     // example: Rotate a single object we defined in our start method
     // this.cube.rotate('x', deltaTime * 0.5);
