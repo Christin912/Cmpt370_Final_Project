@@ -27,16 +27,32 @@
     background-position: center; ">
     </div>
 
-    <div id = "hud"><span id = "score">Score: 0</span></div>
-    <style> #hud {
-        position: fixed;
-        top: 12px;
-        left: 12px;
-        color: white;
-        font: 600 36px/1.2 system-ui;
-        text-shadow: 0 0 5px black;
-        pointer-events: none;
-    } </style>
+    <div id="hud">
+        <span id="score">Score: 0</span>
+        <span id="multiplier">Multiplier: x1</span>
+        <span id="streak">Streak: 0</span>
+    </div>
+    <style> 
+        #hud {
+            position: fixed;
+            top: 12px;
+            left: 12px;
+            color: white;
+            font: 600 36px/1.2 system-ui;
+            text-shadow: 0 0 5px black;
+            pointer-events: none;
+        }
+        #hud span {
+            display: block;
+            margin-bottom: 8px;
+        }
+        #multiplier {
+            color: #FFD700;
+        }
+        #streak {
+            color: #00FF00;
+        }
+    </style>
 
     <!-- main canvas to be rendered -->
     <canvas id="glCanvas" style="width: 100%; height: 100%; display:block"></canvas>

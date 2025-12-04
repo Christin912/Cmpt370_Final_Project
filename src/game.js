@@ -6,6 +6,17 @@ class Game {
     this.score = 0;
     this.playerSpeed = 5;
 
+    // Collectibles system
+    this.collectibles = new Map();
+    this.collectibleValue = 100;
+    this.streak = 0;
+    this.multiplier = 1;
+    this.maxMultiplier = 10;
+    this.collectibleSpacing = 24; // Distance between collectibles (tripled from 8)
+    this.lastCollectibleX = 0;
+    this.nextCollectibleX = 0;
+    this.missedCollectibleX = null; // Track if we passed a collectible without collecting
+
     // Jump configuration
     this.jumpConfig = {
       jumpStrength: 7,
@@ -52,12 +63,172 @@ class Game {
     this.nextEnemySpawnInterval = (Math.random() * (this.maxSpawnInterval - this.minSpawnInterval)) + this.minSpawnInterval;
   }
 
+  // Update multiplier display
+  updateHUD() {
+    const scoreEl = document.getElementById('score');
+    const multiplierEl = document.getElementById('multiplier');
+    const streakEl = document.getElementById('streak');
+    
+    if (scoreEl) {
+      scoreEl.textContent = `Score: ${Math.floor(this.score)}`;
+    }
+    if (multiplierEl) {
+      multiplierEl.textContent = `Multiplier: x${this.multiplier}`;
+    }
+    if (streakEl) {
+      streakEl.textContent = `Streak: ${this.streak}`;
+    }
+  }
+
+  // Spawn a collectible star
+  async spawnCollectible(xPos) {
+    const yHeight = this.platformY + 1.5 + Math.random() * 0.5; // Slightly above platform
+    const collectibleName = `Collectible_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+    
+    const collectible = await spawnObject({
+      name: collectibleName,
+      type: "cube", // Using cube as a simple collectible
+      material: {
+        diffuse: [1, 1, 0] // Yellow/gold color
+      },
+      position: vec3.fromValues(xPos, yHeight, 0),
+      scale: vec3.fromValues(0.4, 0.4, 0.4), // Made slightly bigger
+    }, this.state);
+
+    // Add rotation behavior
+    collectible.collectibleBehavior = {
+      rotSpeed: 2.0,
+      bobSpeed: 2.0,
+      bobAmount: 0.15,
+      baseY: yHeight
+    };
+
+    this.collectibles.set(collectibleName, {
+      object: collectible,
+      xPos: xPos,
+      collected: false
+    });
+
+    // Create a larger collision box for easier collection
+    this.createBoxCollider(collectible, [2.0, 2.0, 2.0], (otherObject) => {
+      if (otherObject.name === "Player") {
+        const collectibleData = this.collectibles.get(collectibleName);
+        if (collectibleData && !collectibleData.collected) {
+          this.collectCollectible(collectibleName);
+        }
+      }
+    });
+
+    console.log(`[Collectible] Spawned at x=${xPos.toFixed(2)}, y=${yHeight.toFixed(2)}`);
+  }
+
+  // Collect a collectible
+  collectCollectible(collectibleName) {
+    const collectibleData = this.collectibles.get(collectibleName);
+    if (!collectibleData || collectibleData.collected) {
+      console.log(`[Collectible] Already collected or not found: ${collectibleName}`);
+      return;
+    }
+
+    console.log(`[Collectible] COLLECTING ${collectibleName}!`);
+    collectibleData.collected = true;
+    
+    // Increase streak and multiplier
+    this.streak++;
+    this.multiplier = Math.min(this.maxMultiplier, Math.floor(1 + this.streak / 3));
+    
+    // Add score with multiplier
+    const points = this.collectibleValue * this.multiplier;
+    this.score += points;
+    
+    // Remove the collectible visually
+    this.state.objects = this.state.objects.filter(obj => obj.name !== collectibleName);
+    this.collidableObjects = this.collidableObjects.filter(obj => obj.name !== collectibleName);
+    
+    console.log(`[Collectible] ✓ Collected! +${points} points (x${this.multiplier} multiplier, streak: ${this.streak})`);
+    console.log(`[Collectible] New score: ${Math.floor(this.score)}`);
+    
+    this.updateHUD();
+  }
+
+  // Break streak if player passes a collectible
+  breakStreak() {
+    if (this.streak > 0) {
+      console.log(`[Collectible] Streak broken! Was at ${this.streak}`);
+      this.streak = 0;
+      this.multiplier = 1;
+      this.updateHUD();
+    }
+  }
+
+  // Manage collectible spawning and despawning
+  async manageCollectibles() {
+    if (!this.Player) return;
+
+    const playerX = this.Player.model.position[0];
+    
+    // Spawn new collectibles ahead of player
+    while (this.nextCollectibleX < playerX + this.segmentLength * this.spawnAheadSegments) {
+      await this.spawnCollectible(this.nextCollectibleX);
+      this.nextCollectibleX += this.collectibleSpacing;
+    }
+
+    // Check for missed collectibles and despawn old ones
+    const toDelete = [];
+    for (const [name, data] of this.collectibles) {
+      const dx = data.xPos - playerX;
+      
+      // If player passed the collectible without collecting it
+      if (!data.collected && dx < -2.0 && this.missedCollectibleX !== data.xPos) {
+        this.missedCollectibleX = data.xPos;
+        this.breakStreak();
+      }
+      
+      // Despawn collectibles that are far behind
+      if (dx < -this.segmentLength * this.despawnBehindSegments) {
+        toDelete.push(name);
+      }
+    }
+
+    // Remove old collectibles
+    for (const name of toDelete) {
+      const collectibleData = this.collectibles.get(name);
+      if (collectibleData && !collectibleData.collected) {
+        this.state.objects = this.state.objects.filter(obj => obj.name !== name);
+        this.collidableObjects = this.collidableObjects.filter(obj => obj.name !== name);
+      }
+      this.collectibles.delete(name);
+      console.log(`[Collectible] Despawned ${name}`);
+    }
+  }
+
+  // Update collectible animations
+  updateCollectibles(deltaTime, currentTime) {
+    for (const [name, data] of this.collectibles) {
+      if (data.collected) continue;
+      
+      const collectible = data.object;
+      const behavior = collectible.collectibleBehavior;
+      if (!behavior) continue;
+
+      // Rotate the collectible
+      collectible.rotate('y', behavior.rotSpeed * deltaTime);
+      
+      // Bob up and down
+      const bobOffset = Math.sin(currentTime * behavior.bobSpeed) * behavior.bobAmount;
+      collectible.model.position[1] = behavior.baseY + bobOffset;
+    }
+  }
+
   // reset scene to initial state
   async resetScene() {
     console.log("[Game] Resetting scene");
 
     this.score = 0;
     this.playerSpeed = 5;
+    this.streak = 0;
+    this.multiplier = 1;
+    this.missedCollectibleX = null;
 
     // Remove all enemies
     for (const [name] of this.enemies) {
@@ -66,14 +237,23 @@ class Game {
     }
     this.enemies.clear();
 
+    // Remove all collectibles
+    for (const [name] of this.collectibles) {
+      this.state.objects = this.state.objects.filter(obj => obj.name !== name);
+      this.collidableObjects = this.collidableObjects.filter(obj => obj.name !== name);
+    }
+    this.collectibles.clear();
+
     // reset player
     if (this.Player && this.initialPlayerPosition) {
       vec3.copy(this.Player.model.position, this.initialPlayerPosition);
       this.Player.velocity[1] = 0;
       this.Player.isOnGround = false;
-      this.platformY = this.Player.model.position[1] - 0.5 * this.Player.model.scale[1] - 0.01; // slightly below player
-      //const initialSegmentIndex = Math.floor(this.Player.model.position[0] / this.segmentLength);
-      //await this.platformManager(initialSegmentIndex);
+      this.platformY = this.Player.model.position[1] - 0.5 * this.Player.model.scale[1] - 0.01;
+      
+      // Reset collectible spawning
+      this.nextCollectibleX = this.Player.model.position[0] + 5; // Start spawning ahead
+      this.lastCollectibleX = this.nextCollectibleX - this.collectibleSpacing;
     }
 
     // reset jump state
@@ -96,6 +276,7 @@ class Game {
       await this.platformUnderPlayer();
     }
 
+    this.updateHUD();
     console.log("[Game] Scene reset complete");
   }
 
@@ -125,7 +306,7 @@ class Game {
     } else if (this.Player.model.position[0] > rightBound) {
       this.Player.model.position[0] = rightBound;
     }
-    this.Player.model.position[1] = platformTop + 0.05 * this.Player.model.scale[1]; // slightly above platform
+    this.Player.model.position[1] = platformTop + 0.05 * this.Player.model.scale[1];
 
     this.Player.velocity[1] = 0;
     this.Player.isOnGround = true;
@@ -185,7 +366,6 @@ class Game {
     }
 
     for (const name of toDelete) {
-      //const enemy = this.enemies.get(name);
       this.state.objects = this.state.objects.filter(obj => obj.name !== name);
       this.collidableObjects = this.collidableObjects.filter(obj => obj.name !== name);
       this.enemies.delete(name);
@@ -226,21 +406,15 @@ class Game {
 
   // player jump rotation trigger
   triggerJumpRotation() {
-    const horizontalDir = this.Player.velocity && this.Player.velocity[0] || 1; // default forward if constant speed
+    const horizontalDir = this.Player.velocity && this.Player.velocity[0] || 1;
     const movingHorizontally = Math.abs(horizontalDir) > 0;
 
     this.jumpState.spinAxis = movingHorizontally ? 'z' : 'x';
     const sign = movingHorizontally ? (horizontalDir >= 0 ? -1 : 1) : 1;
 
-    this.jumpState.spinRemaining = Math.PI / 2; // 90 degrees per jump
-    this.jumpState.spinSpeed = Math.PI / 0.25; // radians per second
+    this.jumpState.spinRemaining = Math.PI / 2;
+    this.jumpState.spinSpeed = Math.PI / 0.25;
     this.jumpState.spinSign = sign;
-
-    /*console.log('[Jump] spin init:', {
-    axis: this.jumpState.spinAxis,
-    sign: this.jumpState.spinSign,
-    remaining: this.jumpState.spinRemaining,
-    speed: this.jumpState.spinSpeed);*/
   }
 
   // Platform segment generator
@@ -325,7 +499,6 @@ class Game {
 
   // function to check if an object is colliding with collidable objects
   checkCollision(object) {
-    // loop over all the other collidable objects 
     this.collidableObjects.forEach(otherObject => {
       if (object.name === otherObject.name || !object.collider || !otherObject.collider) {
         return;
@@ -335,6 +508,7 @@ class Game {
       const b = computeAABB(otherObject);
 
       const isGround = otherObject.name && otherObject.name.startsWith("PlatformSegment_");
+      const isCollectible = otherObject.name && otherObject.name.startsWith("Collectible_");
 
       const dx = Math.abs(a.center[0] - b.center[0]);
       const dy = Math.abs(a.center[1] - b.center[1]);
@@ -344,14 +518,22 @@ class Game {
       const overlapY = (a.half[1] + b.half[1]) - dy;
       const overlapZ = (a.half[2] + b.half[2]) - dz;
 
-      // When player lands, reset jump state and snap to platform
       if (overlapX > 0 && overlapY > 0 && overlapZ > 0) {
+        // For collectibles, just trigger the collection without physics response
+        if (isCollectible) {
+          if (otherObject.collider.onCollide) {
+            otherObject.collider.onCollide(object);
+          }
+          return; // Don't do physics collision for collectibles
+        }
+
+        // Regular physics collision for non-collectibles
         if (overlapY <= overlapX && overlapY <= overlapZ) {
           if (object.velocity && object.velocity[1] < 0 && a.center[1] > b.center[1]) {
             const platformTop = b.center[1] + b.half[1];
-            object.model.position[1] = platformTop + 0.25 * object.model.scale[1]; // snap
-            object.velocity[1] = 0; // reset vertical velocity on Y collision
-            object.isOnGround = true; // set on ground flag
+            object.model.position[1] = platformTop + 0.25 * object.model.scale[1];
+            object.velocity[1] = 0;
+            object.isOnGround = true;
             this.jumpState.rotationCount = 0;
             this.jumpState.spinRemaining = 0;
             this.jumpState.lastGroundTime = performance.now() / 1000;
@@ -378,17 +560,12 @@ class Game {
           const dir = (a.center[2] < b.center[2]) ? -1 : 1;
           object.model.position[2] += dir * overlapZ;
         }
+        
+        // Call the object's own collision callback (for enemies, etc.)
         if (object.collider.onCollide) {
           object.collider.onCollide(otherObject);
         }
       }
-      
-      // do a check to see if we have collided, if we have we can call object.onCollide(otherObject) which will
-      // call the onCollide we define for that specific object. This way we can handle collisions identically for all
-      // objects that can collide but they can do different things (ie. player colliding vs projectile colliding)
-      // use the modeling transformation for object and otherObject to transform position into current location
-      // ie: 
-      // if (collide){ object.collider.onCollide(otherObject) } // fires what we defined our object should do when it collides
     });
   }
 
@@ -396,71 +573,64 @@ class Game {
   async onStart() {
     console.log("On start");
 
-    // this just prevents the context menu from popping up when you right click
     document.addEventListener("contextmenu", (e) => {
       e.preventDefault();
     }, false);
 
-    this.score = 0; // initial score
-    this.playerSpeed = 5; // initial player speed
+    this.score = 0;
+    this.playerSpeed = 5;
+    this.streak = 0;
+    this.multiplier = 1;
 
-    // set up player, and platform Y level
     this.Player = getObject(this.state, "Player");
     this.initialPlayerPosition = vec3.clone(this.Player.model.position);
-    this.Player.velocity = vec3.fromValues(0, 0, 0); // custom property
+    this.Player.velocity = vec3.fromValues(0, 0, 0);
 
-    this.platformY = this.Player.model.position[1] - 0.5 * this.Player.model.scale[1] - 0.01; // slightly below player
+    this.platformY = this.Player.model.position[1] - 0.5 * this.Player.model.scale[1] - 0.01;
 
-    this.state.canvas.tabIndex = 0; // make canvas focusable
-    this.state.canvas.focus();      // focus on the canvas to receive keyboard input
+    // Initialize collectible spawning
+    this.nextCollectibleX = this.Player.model.position[0] + 5;
+    this.lastCollectibleX = this.nextCollectibleX - this.collectibleSpacing;
+
+    this.state.canvas.tabIndex = 0;
+    this.state.canvas.focus();
     window.focus();
 
-    if (!this.Player) { // safety check for player
+    if (!this.Player) {
       console.error('[Platform] Player not found at start');
       return;
     }
 
-    // Initialize platform segments
     const initialSegmentIndex = this.Player ? Math.floor(this.Player.model.position[0] / this.segmentLength) : 0;
     await this.platformManager(initialSegmentIndex);
     await this.spawnEnemies();
     this.lastEnemySpawnTime = performance.now() / 1000;
 
-    // Initialize Satellite
     this.Satellite = getObject(this.state, "Satellite");
 
-    // ====== CAMERA SETUP ======
-    // Calculate the initial offset between camera and player
     this.CameraOffset = vec3.create();
     vec3.sub(this.CameraOffset, this.state.camera.position, this.Player.model.position);
 
-    // Define all available camera modes
     this.CameraModes = {
-      // Primary view: Original top-down-ish view
       primary: {
-        offset: vec3.clone(this.CameraOffset),  // Use the original offset from scene file
-        smooth: true,                            // Enable smooth camera movement
-        smoothFactor: 0.1,                       // How fast camera catches up (0-1)
-        lockY: true,                             // Keep Y position constant
-        lookAtPlayer: true                       // Camera always looks at player
-      },
-      // Alternate view: 3rd Person behind the player
-      third_person: {
-        offset: vec3.fromValues(-3, 2, 1),       // 3 units behind (negative X), 2 units above, centered on Z
+        offset: vec3.clone(this.CameraOffset),
         smooth: true,
-        smoothFactor: 0.15,                      // Slightly more responsive than other views
-        lockY: false,                            // Allow Y to change with player jumps
-        lookAtPlayer: true                       // Always focus on player
+        smoothFactor: 0.1,
+        lockY: true,
+        lookAtPlayer: true
+      },
+      third_person: {
+        offset: vec3.fromValues(-3, 2, 1),
+        smooth: true,
+        smoothFactor: 0.15,
+        lockY: false,
+        lookAtPlayer: true
       }
     };
 
-    // Start with the primary camera mode
     this.activeCameraMode = 'primary';
-    
-    // Track if shift key is being held (prevents multiple switches from one press)
     this._shiftHeld = false;
 
-    // ====== COLLIDER SETUP ======
     this.createBoxCollider(this.Player, null, (otherObject) => {
       if (otherObject.name.startsWith("Enemy_")) {
         setTimeout(() => { this.resetScene(); }, 10);
@@ -469,33 +639,27 @@ class Game {
       console.log(`[Collision] Player collided with ${otherObject.name}`);
     });
     
-    // ====== INPUT HANDLERS ======
-    // Space bar for jumping
     window.addEventListener("keydown", (e) => {
       const isSpace = e.code === "Space" || e.key === " " || e.key === "Spacebar";
       if (isSpace) {
         const now = performance.now() / 1000;
         this.jumpState.lastJumpPressTime = now;
         this.jumpState.keyHeld = true;
-        //console.log("[Input] Space down at", now.toFixed(3));
       }
     });
 
     window.addEventListener("keyup", (e) => {
       const isSpace = e.code === "Space" || e.key === " " || e.key === "Spacebar";
       if (isSpace) {
-        this.jumpState.isJumping = false; // stop hold boost
+        this.jumpState.isJumping = false;
         this.jumpState.keyHeld = false;
-        //console.log("[Input] Space up");
       }
     });
 
-    // Shift key to cycle through camera modes
     window.addEventListener("keydown", (e) => {
       if ((e.code === "ShiftLeft" || e.code === "ShiftRight") && !this._shiftHeld) {
         this._shiftHeld = true;
         
-        // Cycle through all three camera modes: primary -> alt -> third_person -> primary
         if (this.activeCameraMode === 'primary') {
           this.activeCameraMode = 'third_person';
           console.log("[Camera] Switched to alt view");
@@ -513,105 +677,61 @@ class Game {
       }
     });
 
-
-    // example: spawn some stuff before the scene starts
-    // for (let i = 0; i < 10; i++) {
-    //     for (let j = 0; j < 10; j++) {
-    //         for (let k = 0; k < 10; k++) {
-    //             spawnObject({
-    //                 name: `new-Object${i}${j}${k}`,
-    //                 type: "cube",
-    //                 material: {
-    //                     diffuse: randomVec3(0, 1)
-    //                 },
-    //                 position: vec3.fromValues(4 - i, 5 - j, 10 - k),
-    //                 scale: vec3.fromValues(0.5, 0.5, 0.5)
-    //             }, this.state);
-    //         }
-    //     }
-    // }
-
-    // example: spawn in objects, set constantRotate to true for them (used below) and give them a collider
-    //   for (let i = 0; i < 2; i++) {
-    //     let tempObject = await spawnObject({
-    //       name: `new-Object${i}`,
-    //       type: "cube",
-    //       material: {
-    //         diffuse: randomVec3(0, 1)
-    //       },
-    //       position: vec3.fromValues(4 - i, 0, 0),
-    //       scale: vec3.fromValues(0.5, 0.5, 0.5)
-    //     }, this.state);
-
-
-    //     tempObject.constantRotate = true;         // lets add a flag so we can access it later
-    //     this.spawnedObjects.push(tempObject);     // add these to a spawned objects list
-    //     this.collidableObjects.push(tempObject);  // say these can be collided into
-    //   }
+    this.updateHUD();
   }
 
   // Runs once every frame non stop after the scene loads
   async onUpdate(deltaTime) {
-    // TODO - Here we can add game logic, like moving game objects, detecting collisions, you name it. Examples of functions can be found in sceneFunctions.
     const gravity = -9.81;
-    this.score += deltaTime * 10; // increase score over time
+    this.score += deltaTime * 10;
 
-    const el = document.getElementById('score'); // link to score display element
-    if (el) { 
-      el.textContent = `Score: ${Math.floor(this.score)}`; // update score display
-    }
+    this.updateHUD();
 
-    // speed increase logic
-    if (this.score >= 5000) {
-      this.playerSpeed = 100; // increase player speed after reaching score threshold
+    // speed increase logic - much more gradual progression
+    if (this.score >= 20000) {
+      this.playerSpeed = 25;
     }    
-    else if (this.score >= 3000 && this.score < 5000) {
-      this.playerSpeed = 85; // increase player speed after reaching score threshold
+    else if (this.score >= 15000 && this.score < 20000) {
+      this.playerSpeed = 22;
     } 
-    else if (this.score >= 2750 && this.score < 3000) {
-      this.playerSpeed = 70; // increase player speed after reaching score threshold
+    else if (this.score >= 12000 && this.score < 15000) {
+      this.playerSpeed = 19;
     }
-    else if (this.score >= 2500 && this.score < 2750) {
-      this.playerSpeed = 55; // increase player speed after reaching score threshold
+    else if (this.score >= 10000 && this.score < 12000) {
+      this.playerSpeed = 17;
     }
-    else if (this.score >= 2250 && this.score < 2500) {
-      this.playerSpeed = 40; // increase player speed after reaching score threshold
+    else if (this.score >= 8000 && this.score < 10000) {
+      this.playerSpeed = 15;
     }
-    else if (this.score >= 2000 && this.score < 2250) {
-      this.playerSpeed = 30; // increase player speed after reaching score threshold
+    else if (this.score >= 6000 && this.score < 8000) {
+      this.playerSpeed = 13;
     }
-    else if (this.score >= 1750 && this.score < 2000) {
-      this.playerSpeed = 25; // increase player speed after reaching score threshold
+    else if (this.score >= 4500 && this.score < 6000) {
+      this.playerSpeed = 11;
     }
-    else if (this.score >= 1500 && this.score < 1750) {
-      this.playerSpeed = 20; // increase player speed after reaching score threshold
+    else if (this.score >= 3000 && this.score < 4500) {
+      this.playerSpeed = 9;
     }
-    else if (this.score >= 1000 && this.score < 1500) {
-      this.playerSpeed = 15; // increase player speed after reaching score threshold
+    else if (this.score >= 1500 && this.score < 3000) {
+      this.playerSpeed = 7;
     }
-    else if (this.score >= 750 && this.score < 1000) {
-      this.playerSpeed = 10; // increase player speed after reaching score threshold
-    }
-    else if (this.score >= 500 && this.score < 750) {
-      this.playerSpeed = 7; // increase player speed after reaching score threshold
+    else if (this.score >= 500 && this.score < 1500) {
+      this.playerSpeed = 6;
     }
 
     const prevY = this.Player.model.position[1];
-    this.Player.translate(vec3.fromValues(this.playerSpeed * deltaTime, 0, 0)); // move player along x-axis
+    this.Player.translate(vec3.fromValues(this.playerSpeed * deltaTime, 0, 0));
 
-    // apply gravity
-    this.Player.velocity[1] += gravity * deltaTime; // apply gravity to vertical velocity
+    this.Player.velocity[1] += gravity * deltaTime;
     if (this.Player.velocity[1] < -50) {
-      this.Player.velocity[1] = -50; // terminal velocity
+      this.Player.velocity[1] = -50;
     }
 
-
-    // jumping logic
     const currentTime = performance.now() / 1000;
     const jumpCFG = this.jumpConfig;
     const jumpST = this.jumpState;
 
-    this.Player.isOnGround = false; // reset on ground flag each frame
+    this.Player.isOnGround = false;
 
     const onGround = this.Player.isOnGround;
     if (onGround) {
@@ -626,44 +746,38 @@ class Game {
       jumpST.jumpStartTime = currentTime;
       jumpST.isJumping = true;
 
-      // handle double jump usage
       if (!onGround && !isCoyote) {
-        jumpST.usedDoubleJump = true; // mark double jump as used
+        jumpST.usedDoubleJump = true;
       }
 
       const maxRotations = jumpCFG.allowDoubleJump ? 2 : 1;
-      // trigger jump rotation
       if (jumpST.rotationCount < maxRotations) {
         this.triggerJumpRotation();
         jumpST.rotationCount += 1;
       }
-      jumpST.lastJumpPressTime = -999; // reset jump press time to avoid double triggering
+      jumpST.lastJumpPressTime = -999;
     }
 
-    // Animation block for jump rotation
     if (!this.Player.isOnGround && this.jumpState.spinRemaining > 0) {
       const step = Math.min(this.jumpState.spinSpeed * deltaTime, this.jumpState.spinRemaining);
       const axis = this.jumpState.spinAxis;
       const signedStep = step * (this.jumpState.spinSign || 1);
       this.Player.rotate(axis, signedStep);
       this.jumpState.spinRemaining -= step;
-      console.log('[Jump] spin step:', { axis, step: signedStep, remaining: this.jumpState.spinRemaining });
     }
 
-    // hold boost
     if (jumpST.isJumping) {
       const holdTime = currentTime - jumpST.jumpStartTime;
       const canHold = (jumpST.lastJumpPressTime === -999) ? true : (currentTime - jumpST.lastJumpPressTime) <= jumpCFG.maxHoldBoostTime;
       if (canHold && holdTime <= jumpCFG.maxHoldBoostTime && this.Player.velocity[1] > 0) {
         this.Player.velocity[1] += jumpCFG.holdBoostStrength * deltaTime;
       } else {
-        jumpST.isJumping = false; // stop hold boost
+        jumpST.isJumping = false;
       }
     }
 
-    this.Player.translate(vec3.fromValues(0, this.Player.velocity[1] * deltaTime, 0)); // update position based on velocity
+    this.Player.translate(vec3.fromValues(0, this.Player.velocity[1] * deltaTime, 0));
 
-    // Platform collision detection
     {
       const playerBottomPrev = prevY + this.Player.centroid[1] - 0.25 * this.Player.model.scale[1];
       const playerBottomNow  = this.Player.model.position[1] + this.Player.centroid[1] - 0.25 * this.Player.model.scale[1];
@@ -674,20 +788,17 @@ class Game {
         const pAABB = computeAABB(segment);
         const playerAABB = computeAABB(this.Player);
 
-        // Horizontal overlap check
         const overlapX = (pAABB.half[0] + playerAABB.half[0]) - Math.abs(pAABB.center[0] - playerAABB.center[0]);
         const overlapZ = (pAABB.half[2] + playerAABB.half[2]) - Math.abs(pAABB.center[2] - playerAABB.center[2]);
-        if (overlapX <= 0 || overlapZ <= 0) continue; // require significant horizontal overlap
+        if (overlapX <= 0 || overlapZ <= 0) continue;
 
         const platformTop = pAABB.center[1] + pAABB.half[1];
         const crossedDownThroughTop = playerBottomPrev >= platformTop && playerBottomNow <= platformTop;
         if (crossedDownThroughTop && this.Player.velocity[1] <= 0) {
-          // Snap to top
           candidates.push({ pAABB, platformTop, overlapX});
         }
       }
 
-      // select best candidate platform to land on (prevent corner cases)
       if (candidates.length > 0) {
         const best = candidates.reduce((a, b) => (b.overlapX > a.overlapX) ? b : a);
         const margin = 0.35 * this.Player.model.scale[0];
@@ -700,7 +811,7 @@ class Game {
           this.Player.model.position[0] = rightBound;
         }
 
-        this.Player.model.position[1] = best.platformTop + 0.05 * this.Player.model.scale[1]; // slightly above platform
+        this.Player.model.position[1] = best.platformTop + 0.05 * this.Player.model.scale[1];
         this.Player.velocity[1] = 0;
         this.Player.isOnGround = true;
         this.jumpState.rotationCount = 0;
@@ -710,46 +821,33 @@ class Game {
         this.jumpState.isJumping = false;
         landed = true;
       }
-      if (!landed) {
-        // remain airborne; isOnGround already false earlier
-      }
     }
 
-    // rotate satellite
     if (this.Satellite && this.Satellite.rotate) {
       this.Satellite.rotate('z', deltaTime * 0.2);
     }
 
-    this.checkCollision(this.Player); // check for collisions on the player every frame
+    this.checkCollision(this.Player);
 
-    // ====== CAMERA UPDATE LOGIC ======
     if (this.Player) {
-      // Get the currently active camera mode settings
       const mode = this.CameraModes[this.activeCameraMode];
       
-      // Calculate where the camera should be based on player position + offset
       const desiredPosition = vec3.create();
       vec3.add(desiredPosition, this.Player.model.position, mode.offset);
       
-      // Apply smooth camera movement if enabled
       if (mode.smooth) {
-        // Calculate the difference between current and desired position
         const delta = vec3.create();
         vec3.sub(delta, desiredPosition, this.state.camera.position);
-        // Move only a fraction of that distance (smoothFactor) each frame
         vec3.scale(delta, delta, mode.smoothFactor);
         vec3.add(this.state.camera.position, this.state.camera.position, delta);
       } else {
-        // No smoothing - jump directly to desired position
         vec3.copy(this.state.camera.position, desiredPosition);
       }
       
-      // Lock Y axis if specified (keeps camera at constant height)
       if (mode.lockY) {
         this.state.camera.position[1] = desiredPosition[1];
       }
       
-      // Make camera always look at the player if enabled
       if (mode.lookAtPlayer) {
         const toPlayer = vec3.create();
         vec3.sub(toPlayer, this.Player.model.position, this.state.camera.position);
@@ -758,33 +856,13 @@ class Game {
       }
     }
     
-    const currentSegmentIndex = Math.floor(this.Player.model.position[0] / this.segmentLength); // determine current platform segment index
-    await this.platformManager(currentSegmentIndex); // manage platform segments based on player position
-    await this.enemyManager(deltaTime); // manage enemy spawning/despawning
-    this.updateEnemies(deltaTime, currentTime); // update enemy behaviors
-
-    // example: Rotate a single object we defined in our start method
-    // this.cube.rotate('x', deltaTime * 0.5);
-
-    // example: Rotate all objects in the scene marked with a flag
-    // this.state.objects.forEach((object) => {
-    //   if (object.constantRotate) {
-    //     object.rotate('y', deltaTime * 0.5);
-    //   }
-    // });
-
-    // simulate a collision between the first spawned object and 'cube' 
-    // if (this.spawnedObjects[0].collidable) {
-    //     this.spawnedObjects[0].onCollide(this.cube);
-    // }
-
-    // example: Rotate all the 'spawned' objects in the scene
-    // this.spawnedObjects.forEach((object) => {
-    //     object.rotate('y', deltaTime * 0.5);
-    // });
-
-
-    // example - call our collision check method on our cube
-    // this.checkCollision(this.cube);
+    const currentSegmentIndex = Math.floor(this.Player.model.position[0] / this.segmentLength);
+    await this.platformManager(currentSegmentIndex);
+    await this.enemyManager(deltaTime);
+    this.updateEnemies(deltaTime, currentTime);
+    
+    // Manage collectibles
+    await this.manageCollectibles();
+    this.updateCollectibles(deltaTime, currentTime);
   }
 }
