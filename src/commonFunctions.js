@@ -385,6 +385,11 @@ function parseOBJFileToJSON(objFileURL) {
       })
   });
 }*/
+
+// AI Acknowledgment: The Following Function was created with the assistance of ChatGPT 5.
+// The reason for rewriting this function was to fix issues with the previous implementation of parseOBJFileToJSON.
+// The new implementation allows for different instances of OBJLoader to be created without relying on prototype methods,
+// which can lead to unexpected behavior if multiple loaders are used simultaneously.
 function parseOBJFileToJSON(objFileURL) {
   return new Promise((resolve, reject) => {
     fetch("/assets/" + objFileURL)
@@ -483,6 +488,7 @@ async function addMesh(object, vertShader = null, fragShader = null) {
   }
 }
 
+// Compute Axis Aligned Bounding Box for an object
 function computeAABB(object) {
   const half = [
     object.model.scale[0] / 4,
@@ -498,6 +504,7 @@ function computeAABB(object) {
   return {center, half};
 }
 
+// Check for AABB overlap between two objects
 function aabbOverlap(a, b) {
   return (Math.abs(a.center[0] - b.center[0]) <= (a.half[0] + b.half[0])) &&
          (Math.abs(a.center[1] - b.center[1]) <= (a.half[1] + b.half[1])) &&

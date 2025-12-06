@@ -77,7 +77,7 @@ class RenderObject {
       attributes: {
         position: initPositionAttribute(this.gl, this.programInfo, positions),
         normal: initNormalAttribute(this.gl, this.programInfo, normals),
-        // uv: initTextureCoords(this.gl, this.programInfo, textureCoords),
+        //uv: initTextureCoords(this.gl, this.programInfo, textureCoords),
       },
       indicies: initIndexBuffer(this.gl, indices),
       numVertices: indices.length
@@ -95,7 +95,7 @@ class RenderObject {
       attribLocations: {
         vertexPosition: this.gl.getAttribLocation(shaderProgram, 'aPosition'),
         vertexNormal: this.gl.getAttribLocation(shaderProgram, 'aNormal'),
-        // vertexUV: this.gl.getAttribLocation(shaderProgram, 'aUV'),
+        //vertexUV: this.gl.getAttribLocation(shaderProgram, 'aUV'),
       },
       uniformLocations: {
         projection: this.gl.getUniformLocation(shaderProgram, 'uProjectionMatrix'),
@@ -103,6 +103,7 @@ class RenderObject {
         model: this.gl.getUniformLocation(shaderProgram, 'uModelMatrix'),
         // normalMatrix: this.gl.getUniformLocation(shaderProgram, 'normalMatrix'),
         diffuseVal: this.gl.getUniformLocation(shaderProgram, 'diffuseVal'),
+        alphaVal: this.gl.getUniformLocation(shaderProgram, 'alphaVal'),
         // ambientVal: this.gl.getUniformLocation(shaderProgram, 'ambientVal'),
         // specularVal: this.gl.getUniformLocation(shaderProgram, 'specularVal'),
         // nVal: this.gl.getUniformLocation(shaderProgram, 'nVal'),

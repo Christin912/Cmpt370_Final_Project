@@ -425,7 +425,8 @@ class Game {
       name: `PlatformSegment_${index}`,
       type: "cube",
       material: {
-        diffuse: [1, 1, 0]
+        diffuse: [1, 1, 0],
+        alpha: 0.4
       },
       position: vec3.fromValues(xCenter, this.platformY, 0),
       scale: vec3.fromValues(this.segmentLength * 2, 1, 1)

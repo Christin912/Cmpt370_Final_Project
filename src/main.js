@@ -78,10 +78,13 @@ async function main() {
         precision highp float;
 
         uniform vec3 diffuseVal;
+        uniform float alphaVal;
+
+        
 
         out vec4 fragColor;
         void main() {
-            fragColor = vec4(diffuseVal, 1.0);
+            fragColor = vec4(diffuseVal, alphaVal);
         }
         `;
 
@@ -210,8 +213,11 @@ function drawScene(gl, deltaTime, state) {
   gl.cullFace(gl.BACK);
   // gl.frontFace(gl.CCW);
   gl.clearDepth(1.0); // Clear everything
-  
 
+  // enable alpha blending
+  gl.enable(gl.BLEND);
+  gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+  
   // sort objects by nearness to camera
   let sorted = state.objects.sort((a, b) => {
     let aCentroidFour = vec4.fromValues(a.centroid[0], a.centroid[1], a.centroid[2], 1.0);
@@ -296,6 +302,14 @@ function drawScene(gl, deltaTime, state) {
         }
       }
 
+      const opacity = (object.material && typeof object.material.alpha === 'number') ? object.material.alpha : 1.0;
+      const uOpacity = object.programInfo.uniformLocations.alphaVal;
+      if (uOpacity) {
+        gl.uniform1f(uOpacity, opacity);
+      }
+      
+      gl.depthMask(opacity >= 1.0);
+      gl.bindVertexArray(object.buffers.vao);
 
       {
         // Bind the buffer we want to draw
@@ -337,6 +351,10 @@ function drawScene(gl, deltaTime, state) {
           gl.drawElements(gl.TRIANGLES, object.buffers.numVertices, gl.UNSIGNED_SHORT, offset);
         }
       }
+
+      // enable depth writing again
+      gl.depthMask(true);
+
     }
   });
 }
