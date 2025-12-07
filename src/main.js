@@ -56,12 +56,14 @@ async function main() {
     `#version 300 es
         in vec3 aPosition;
         in vec3 aNormal;
+        in vec2 aUV;
 
         uniform mat4 uProjectionMatrix;
         uniform mat4 uViewMatrix;
         uniform mat4 uModelMatrix;
 
         out vec3 oNormal;
+        out vec2 oUV;
 
         void main() {
             // Simply use this normal so no error is thrown
@@ -69,6 +71,9 @@ async function main() {
 
             // Postion of the fragment in world space
             gl_Position = uProjectionMatrix * uViewMatrix * uModelMatrix * vec4(aPosition, 1.0);
+
+            // Pass UV to fragment shader
+            oUV = aUV;
         }
         `;
 
@@ -77,14 +82,32 @@ async function main() {
         #define MAX_LIGHTS 20
         precision highp float;
 
+        in vec3 oNormal;
+        in vec2 oUV;
+
         uniform vec3 diffuseVal;
+        uniform vec3 ambientVal;
+        uniform vec3 specularVal;
+        uniform float nVal;
         uniform float alphaVal;
 
-        
+        uniform sampler2D uTexture;
+        uniform int samplerExists;
 
         out vec4 fragColor;
         void main() {
-            fragColor = vec4(diffuseVal, alphaVal);
+        vec4 textureColor = texture(uTexture, oUV);
+        vec3 normal = normalize(oNormal);
+
+        vec3 diffuseColor;
+        if (samplerExists == 1) {
+            diffuseColor = textureColor.rgb;
+        } 
+            else {
+            diffuseColor = diffuseVal;
+        }
+
+          fragColor = vec4(diffuseColor, alphaVal);
         }
         `;
 
