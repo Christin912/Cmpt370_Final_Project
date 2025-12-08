@@ -118,8 +118,7 @@ class Game {
         }
       }
     });
-
-    console.log(`[Collectible] Spawned at x=${xPos.toFixed(2)}, y=${yHeight.toFixed(2)}`);
+    //console.log(`[Collectible] Spawned at x=${xPos.toFixed(2)}, y=${yHeight.toFixed(2)}`);
   }
 
   // Collect a collectible
@@ -130,7 +129,7 @@ class Game {
       return;
     }
 
-    console.log(`[Collectible] COLLECTING ${collectibleName}!`);
+    //console.log(`[Collectible] COLLECTING ${collectibleName}!`);
     collectibleData.collected = true;
     
     // Increase streak and multiplier
@@ -145,8 +144,8 @@ class Game {
     this.state.objects = this.state.objects.filter(obj => obj.name !== collectibleName);
     this.collidableObjects = this.collidableObjects.filter(obj => obj.name !== collectibleName);
     
-    console.log(`[Collectible] ✓ Collected! +${points} points (x${this.multiplier} multiplier, streak: ${this.streak})`);
-    console.log(`[Collectible] New score: ${Math.floor(this.score)}`);
+    //console.log(`[Collectible] ✓ Collected! +${points} points (x${this.multiplier} multiplier, streak: ${this.streak})`);
+    //console.log(`[Collectible] New score: ${Math.floor(this.score)}`);
     
     this.updateHUD();
   }
@@ -198,7 +197,7 @@ class Game {
         this.collidableObjects = this.collidableObjects.filter(obj => obj.name !== name);
       }
       this.collectibles.delete(name);
-      console.log(`[Collectible] Despawned ${name}`);
+      //console.log(`[Collectible] Despawned ${name}`);
     }
   }
 
@@ -352,7 +351,7 @@ class Game {
     };
     this.enemies.set(enemyName, enemy);
     this.createBoxCollider(enemy, [2.0, 2.0, 2.0]);
-    console.log(`[Enemy] Spawned ${enemyName} at (${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)})`);
+    //console.log(`[Enemy] Spawned ${enemyName} at (${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)})`);
   }
 
   // remove enemies whem they are behind player
@@ -369,7 +368,7 @@ class Game {
       this.state.objects = this.state.objects.filter(obj => obj.name !== name);
       this.collidableObjects = this.collidableObjects.filter(obj => obj.name !== name);
       this.enemies.delete(name);
-      console.log(`[Enemy] Despawned ${name}`);
+      //console.log(`[Enemy] Despawned ${name}`);
     }
   }
 
@@ -434,7 +433,7 @@ class Game {
 
     this.platformSegments.set(index, platform);
     this.createBoxCollider(platform);
-    console.log(`[Platform] Spawned segment ${index} at x=${xCenter}`);
+    //console.log(`[Platform] Spawned segment ${index} at x=${xCenter}`);
     return platform;
   }
 
@@ -450,7 +449,7 @@ class Game {
       this.collidableObjects = this.collidableObjects.filter(obj => obj.name !== name);
     }
     this.platformSegments.delete(index);
-    console.log(`[Platform] Despawned segment ${index}`);
+    //console.log(`[Platform] Despawned segment ${index}`);
   }
 
   // Platform manager to spawn/despawn segments based on player position
