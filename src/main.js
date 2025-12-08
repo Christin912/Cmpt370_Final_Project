@@ -129,6 +129,8 @@ async function main() {
     samplerNormExists: 0,
   };
 
+  state.skyBoxRotation = 0.0;
+
   // If skybox is enabled, load the texture and initialize skybox
   if (state.skyBoxOn && state.skyBoxPath) {
     try {
@@ -139,6 +141,8 @@ async function main() {
       console.warn("Skybox failed to load, continuing without it:", e.message);
     }
   };
+
+
 
   state.numLights = state.pointLights.length;
 
@@ -218,6 +222,8 @@ function drawScene(gl, deltaTime, state) {
   gl.clearColor(state.settings.backgroundColor[0], state.settings.backgroundColor[1], state.settings.backgroundColor[2], 1.0); // Here we are drawing the background color that is saved in our state
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
+  state.skyBoxRotation += deltaTime * 0.01; // rotate skybox slowly
+
   if (state.skyBoxOn && state.skyBoxTexture) {
     gl.depthMask(false);
     gl.useProgram(state.skybox.program);
@@ -225,6 +231,10 @@ function drawScene(gl, deltaTime, state) {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, state.skyBoxTexture);
     gl.uniform1i(state.skybox.uniformSkybox, 0);
+
+    const uSkyboxRotation = gl.getUniformLocation(state.skybox.program, 'uSkyboxRotation');
+    gl.uniform1f(uSkyboxRotation, state.skyBoxRotation);
+
     gl.drawArrays(gl.TRIANGLES, 0, state.skybox.numVertices);
     gl.bindVertexArray(null);
     gl.depthMask(true);
@@ -389,9 +399,18 @@ function initSkyBox(gl, state) {
     in vec2 aPosition;
     out vec2 vUV;
 
+    uniform float uSkyboxRotation;
+
     void main() {
-        vUV = (aPosition + vec2(1.0)) * 0.5;
-        gl_Position = vec4(aPosition, 0.0, 1.0);
+      float sinAngle = sin(uSkyboxRotation);
+      float cosAngle = cos(uSkyboxRotation);
+      vec2 rotatedPosition = vec2(
+        aPosition.x * cosAngle - aPosition.y * sinAngle,
+        aPosition.x * sinAngle + aPosition.y * cosAngle
+      );
+
+      vUV = (rotatedPosition + vec2(1.0)) * 0.5;
+      gl_Position = vec4(aPosition, 0.0, 1.0);
     }
     `;
 
@@ -431,11 +450,14 @@ function initSkyBox(gl, state) {
   gl.vertexAttribPointer(attribPos, 2, gl.FLOAT, false, 0, 0);
   gl.bindVertexArray(null);
 
+  const uniformSkyboxRotation = gl.getUniformLocation(skyboxProgram, 'uSkyboxRotation');
+
   // Store skybox information in state
   state.skybox = {
     program: skyboxProgram,
     attribPos: attribPos,
     uniformSkybox: uniformSkybox,
+    uniformSkyboxRotation: uniformSkyboxRotation,
     vao: skyboxVao,
     numVertices: 6,
   };
