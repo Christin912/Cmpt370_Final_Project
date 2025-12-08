@@ -110,7 +110,7 @@ class Game {
     });
 
     // Create a larger collision box for easier collection
-    this.createBoxCollider(collectible, [2.0, 2.0, 2.0], (otherObject) => {
+    this.createBoxCollider(collectible, [1.0, 1.0, 1.0], (otherObject) => {
       if (otherObject.name === "Player") {
         const collectibleData = this.collectibles.get(collectibleName);
         if (collectibleData && !collectibleData.collected) {
