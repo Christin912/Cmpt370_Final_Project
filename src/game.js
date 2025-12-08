@@ -351,7 +351,7 @@ class Game {
         baseY: y
     };
     this.enemies.set(enemyName, enemy);
-    this.createBoxCollider(enemy, [1.5, 1.5, 1.5]);
+    this.createBoxCollider(enemy, [2.0, 2.0, 2.0]);
     console.log(`[Enemy] Spawned ${enemyName} at (${x.toFixed(2)}, ${y.toFixed(2)}, ${z.toFixed(2)})`);
   }
 

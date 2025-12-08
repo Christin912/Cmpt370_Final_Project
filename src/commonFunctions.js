@@ -490,15 +490,16 @@ async function addMesh(object, vertShader = null, fragShader = null) {
 
 // Compute Axis Aligned Bounding Box for an object
 function computeAABB(object) {
+  const dims = (object.collider && object.collider.dimensions) ? object.collider.dimensions : object.model.scale;
   const half = [
-    object.model.scale[0] / 4,
-    object.model.scale[1] / 4,
-    object.model.scale[2] / 4
+    dims[0] / 4,
+    dims[1] / 4,
+    dims[2] / 4
   ];
   const center = [
-    object.model.position[0] + object.centroid[0] - 0.25 * object.model.scale[0],
-    object.model.position[1] + object.centroid[1] - 0.25 * object.model.scale[1],
-    object.model.position[2] + object.centroid[2] - 0.25 * object.model.scale[2]
+    object.model.position[0] + object.centroid[0] - 0.25 * dims[0],
+    object.model.position[1] + object.centroid[1] - 0.25 * dims[1],
+    object.model.position[2] + object.centroid[2] - 0.25 * dims[2]
   ];
 
   return {center, half};
