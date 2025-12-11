@@ -61,6 +61,10 @@ class Game {
       maxActive : 12
     };
     this.nextEnemySpawnInterval = (Math.random() * (this.maxSpawnInterval - this.minSpawnInterval)) + this.minSpawnInterval;
+
+    this.musicStarted = false;
+    this.bgMusic = document.getElementById("bgMusic");
+    this.bgMusic.volume = 0.5;
   }
 
   // Update multiplier display
@@ -588,6 +592,10 @@ class Game {
 
     this.platformY = this.Player.model.position[1] - 0.5 * this.Player.model.scale[1] - 0.01;
 
+    const initialSegmentIndex = this.Player ? Math.floor(this.Player.model.position[0] / this.segmentLength) : 0;
+    await this.platformManager(initialSegmentIndex);
+    await this.platformUnderPlayer();
+
     // Initialize collectible spawning
     this.nextCollectibleX = this.Player.model.position[0] + 5;
     this.lastCollectibleX = this.nextCollectibleX - this.collectibleSpacing;
@@ -601,8 +609,8 @@ class Game {
       return;
     }
 
-    const initialSegmentIndex = this.Player ? Math.floor(this.Player.model.position[0] / this.segmentLength) : 0;
-    await this.platformManager(initialSegmentIndex);
+    //const initialSegmentIndex = this.Player ? Math.floor(this.Player.model.position[0] / this.segmentLength) : 0;
+    //await this.platformManager(initialSegmentIndex);
     await this.spawnEnemies();
     this.lastEnemySpawnTime = performance.now() / 1000;
 
@@ -677,6 +685,8 @@ class Game {
       }
     });
 
+
+
     this.updateHUD();
   }
 
@@ -745,6 +755,12 @@ class Game {
       this.Player.velocity[1] = jumpCFG.jumpStrength;
       jumpST.jumpStartTime = currentTime;
       jumpST.isJumping = true;
+
+      // Play background music on first jump
+      if (!this.musicStarted) {
+        this.bgMusic.play();
+        this.musicStarted = true;
+      }
 
       if (!onGround && !isCoyote) {
         jumpST.usedDoubleJump = true;
