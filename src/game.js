@@ -62,6 +62,7 @@ class Game {
     };
     this.nextEnemySpawnInterval = (Math.random() * (this.maxSpawnInterval - this.minSpawnInterval)) + this.minSpawnInterval;
 
+    // Music Management
     this.musicStarted = false;
     this.bgMusic = document.getElementById("bgMusic");
     this.bgMusic.volume = 0.5;
@@ -129,7 +130,7 @@ class Game {
   collectCollectible(collectibleName) {
     const collectibleData = this.collectibles.get(collectibleName);
     if (!collectibleData || collectibleData.collected) {
-      console.log(`[Collectible] Already collected or not found: ${collectibleName}`);
+      //console.log(`[Collectible] Already collected or not found: ${collectibleName}`);
       return;
     }
 
@@ -157,7 +158,7 @@ class Game {
   // Break streak if player passes a collectible
   breakStreak() {
     if (this.streak > 0) {
-      console.log(`[Collectible] Streak broken! Was at ${this.streak}`);
+      //console.log(`[Collectible] Streak broken! Was at ${this.streak}`);
       this.streak = 0;
       this.multiplier = 1;
       this.updateHUD();
@@ -319,15 +320,17 @@ class Game {
     this.jumpState.usedDoubleJump = false;
     this.jumpState.isJumping = false;
   }
-  
+
   // spawn enemies ahead of player
   async spawnEnemies() {
     if (!this.Player) return;
     if (this.enemies.size >= this.enemyConfig.maxActive) return;
 
+    const variable = Math.random() * 4;
+
     const xBase = this.Player.model.position[0] + this.enemyConfig.spawnDistance;
     const x = xBase + (Math.random() * this.segmentLength);
-    const y = this.platformY + this.minSpawnHeight + Math.random() * (this.maxSpawnHeight - this.minSpawnHeight);
+    const y = this.platformY + this.minSpawnHeight + Math.random() * (this.maxSpawnHeight - this.minSpawnHeight) - variable;
     const z = 0;
 
     const enemyName = `Enemy_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
@@ -347,7 +350,7 @@ class Game {
           y: (0.5 + Math.random()) * (Math.random() < 0.5 ? -1 : 1),
           z: (0.5 + Math.random()) * (Math.random() < 0.5 ? -1 : 1)
         },
-        undulate: Math.random() < 0.5,
+        undulate: Math.random(),
         amp: 0.2 + Math.random() * 0.04,
         freq: 0.5 + Math.random() * 0.8,
         phase: Math.random() * Math.PI * 2,
@@ -596,6 +599,8 @@ class Game {
     await this.platformManager(initialSegmentIndex);
     await this.platformUnderPlayer();
 
+    this.Satellite = getObject(this.state, "Satellite");
+
     // Initialize collectible spawning
     this.nextCollectibleX = this.Player.model.position[0] + 5;
     this.lastCollectibleX = this.nextCollectibleX - this.collectibleSpacing;
@@ -613,8 +618,6 @@ class Game {
     //await this.platformManager(initialSegmentIndex);
     await this.spawnEnemies();
     this.lastEnemySpawnTime = performance.now() / 1000;
-
-    this.Satellite = getObject(this.state, "Satellite");
 
     this.CameraOffset = vec3.create();
     vec3.sub(this.CameraOffset, this.state.camera.position, this.Player.model.position);
