@@ -86,9 +86,7 @@ async function main() {
         in vec2 oUV;
 
         uniform vec3 diffuseVal;
-        uniform vec3 ambientVal;
-        uniform vec3 specularVal;
-        uniform float nVal;
+        
         uniform float alphaVal;
 
         uniform sampler2D uTexture;
