@@ -490,7 +490,10 @@ async function addMesh(object, vertShader = null, fragShader = null) {
 
 // Compute Axis Aligned Bounding Box for an object
 function computeAABB(object) {
+  // Dimensions takes either the objects collider dimensions or the model scale if no collider is defined
   const dims = (object.collider && object.collider.dimensions) ? object.collider.dimensions : object.model.scale;
+   
+  // Calculate half-dimensions and center position
   const half = [
     dims[0] / 4,
     dims[1] / 4,
