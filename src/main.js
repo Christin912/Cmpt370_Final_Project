@@ -86,7 +86,6 @@ async function main() {
         in vec2 oUV;
 
         uniform vec3 diffuseVal;
-        
         uniform float alphaVal;
 
         uniform sampler2D uTexture;
@@ -94,16 +93,16 @@ async function main() {
 
         out vec4 fragColor;
         void main() {
-        vec4 textureColor = texture(uTexture, oUV);
-        vec3 normal = normalize(oNormal);
+          vec4 textureColor = texture(uTexture, oUV);
+          vec3 normal = normalize(oNormal);
 
-        vec3 diffuseColor;
-        if (samplerExists == 1) {
-            diffuseColor = textureColor.rgb;
-        } 
-            else {
-            diffuseColor = diffuseVal;
-        }
+          vec3 diffuseColor;
+          if (samplerExists == 1) {
+              diffuseColor = textureColor.rgb;
+          } 
+              else {
+              diffuseColor = diffuseVal;
+          }
 
           fragColor = vec4(diffuseColor, alphaVal);
         }
@@ -416,9 +415,11 @@ function initSkyBox(gl, state) {
 
   const skyFrag = `#version 300 es
     precision mediump float;
+
     in vec2 vUV;
     out vec4 fragColor;
     uniform sampler2D uSkybox;
+    
     void main() {
       fragColor = texture(uSkybox, vUV);
     }
