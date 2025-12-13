@@ -224,6 +224,7 @@ function drawScene(gl, deltaTime, state) {
 
   state.skyBoxRotation += deltaTime * 0.01; // rotate skybox slowly
 
+  // Draw skybox
   if (state.skyBoxOn && state.skyBoxTexture) {
     gl.depthMask(false);
     gl.useProgram(state.skybox.program);
@@ -232,6 +233,7 @@ function drawScene(gl, deltaTime, state) {
     gl.bindTexture(gl.TEXTURE_2D, state.skyBoxTexture);
     gl.uniform1i(state.skybox.uniformSkybox, 0);
 
+    // Set skybox rotation uniform
     const uSkyboxRotation = gl.getUniformLocation(state.skybox.program, 'uSkyboxRotation');
     gl.uniform1f(uSkyboxRotation, state.skyBoxRotation);
 

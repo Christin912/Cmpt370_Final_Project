@@ -851,39 +851,46 @@ class Game {
 
     this.Player.translate(vec3.fromValues(0, this.Player.velocity[1] * deltaTime, 0)); // apply vertical velocity
 
+    // platform landing detection
     {
-      const playerBottomPrev = prevY + this.Player.centroid[1] - 0.25 * this.Player.model.scale[1];
-      const playerBottomNow  = this.Player.model.position[1] + this.Player.centroid[1] - 0.25 * this.Player.model.scale[1];
-      let landed = false;
-      const candidates = [];
+      const playerBottomPrev = prevY + this.Player.centroid[1] - 0.25 * this.Player.model.scale[1];                         // previous bottom Y position
+      const playerBottomNow  = this.Player.model.position[1] + this.Player.centroid[1] - 0.25 * this.Player.model.scale[1]; // current bottom Y position
+      let landed = false; // flag to track if landed this frame
+      const candidates = []; // potential landing platforms
 
+      // check each platform segment for potential landing
       for (const segment of this.platformSegments.values()) {
-        const pAABB = computeAABB(segment);
-        const playerAABB = computeAABB(this.Player);
+        const pAABB = computeAABB(segment);                     // compute platform AABB
+        const playerAABB = computeAABB(this.Player);            // compute player AABB
 
-        const overlapX = (pAABB.half[0] + playerAABB.half[0]) - Math.abs(pAABB.center[0] - playerAABB.center[0]);
-        const overlapZ = (pAABB.half[2] + playerAABB.half[2]) - Math.abs(pAABB.center[2] - playerAABB.center[2]);
+        const overlapX = (pAABB.half[0] + playerAABB.half[0]) - Math.abs(pAABB.center[0] - playerAABB.center[0]); // overlap on X axis
+        const overlapZ = (pAABB.half[2] + playerAABB.half[2]) - Math.abs(pAABB.center[2] - playerAABB.center[2]); // overlap on Z axis
         if (overlapX <= 0 || overlapZ <= 0) continue;
 
-        const platformTop = pAABB.center[1] + pAABB.half[1];
-        const crossedDownThroughTop = playerBottomPrev >= platformTop && playerBottomNow <= platformTop;
+        const platformTop = pAABB.center[1] + pAABB.half[1];                                              // top Y position of platform
+        const crossedDownThroughTop = playerBottomPrev >= platformTop && playerBottomNow <= platformTop;  // check if player crossed down through platform top
+        
+        // if crossed down and moving downward, add as candidate
         if (crossedDownThroughTop && this.Player.velocity[1] <= 0) {
           candidates.push({ pAABB, platformTop, overlapX});
         }
       }
 
+      // if any candidates found, choose the best one to land on to prevent clipping
       if (candidates.length > 0) {
-        const best = candidates.reduce((a, b) => (b.overlapX > a.overlapX) ? b : a);
-        const margin = 0.35 * this.Player.model.scale[0];
-        const leftBound = best.pAABB.center[0] - best.pAABB.half[0] + margin;
-        const rightBound = best.pAABB.center[0] + best.pAABB.half[0] - margin;
+        const best = candidates.reduce((a, b) => (b.overlapX > a.overlapX) ? b : a); // choose platform with largest X overlap
+        const margin = 0.35 * this.Player.model.scale[0];                            // margin to keep player within platform bounds
+        const leftBound = best.pAABB.center[0] - best.pAABB.half[0] + margin;        // left X bound
+        const rightBound = best.pAABB.center[0] + best.pAABB.half[0] - margin;       // right X bound
 
+        // clamp player X position within platform bounds
         if (this.Player.model.position[0] < leftBound) {
           this.Player.model.position[0] = leftBound;
         } else if (this.Player.model.position[0] > rightBound) {
           this.Player.model.position[0] = rightBound;
         }
 
+        // position player above platform and reset vertical velocity and jump state
         this.Player.model.position[1] = best.platformTop + 0.05 * this.Player.model.scale[1];
         this.Player.velocity[1] = 0;
         this.Player.isOnGround = true;
@@ -896,12 +903,14 @@ class Game {
       }
     }
 
+    // rotate satellite object
     if (this.Satellite && this.Satellite.rotate) {
       this.Satellite.rotate('z', deltaTime * 0.2);
     }
 
-    this.checkCollision(this.Player);
+    this.checkCollision(this.Player); // check for collisions involving player
 
+    // update camera position based on active camera mode
     if (this.Player) {
       const mode = this.CameraModes[this.activeCameraMode];
       
@@ -929,6 +938,7 @@ class Game {
       }
     }
     
+    // Manage platforms and enemies
     const currentSegmentIndex = Math.floor(this.Player.model.position[0] / this.segmentLength);
     await this.platformManager(currentSegmentIndex);
     await this.enemyManager(deltaTime);
